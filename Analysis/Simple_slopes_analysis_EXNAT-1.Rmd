@@ -1,0 +1,147 @@
+---
+title: "Simple slopes analysis"
+author: "Sandra Martin"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r file setup, echo = FALSE}
+rm(list = ls()) # clear environment
+knitr::opts_chunk$set() # set default options for all code blocks in this document
+options(scipen = 999) # don't use scientific notation for very large or small numbers
+today <- Sys.Date()
+today <- format(today, format="%y%m%d")
+```
+
+## Load packages
+```{r packages, echo = FALSE, message = FALSE, warning = TRUE}
+# Create a list with needed libraries
+pkgs <- c("here",
+          "egg")
+
+# Load each listed library, check if it's already installed
+# and install if necessary
+for (pkg in pkgs){
+  if(!require(pkg, character.only = TRUE)){
+    install.packages(pkg)
+    library(pkg, character.only = TRUE)
+  }
+}
+```
+
+# Source R scripts for simple slopes analysis
+# CAVE: only do this if you want to re-run simple slopes analysis, calculations take a couple of hours with random slopes
+```{r source simple slopes scripts, include=FALSE, eval=FALSE}
+# source(here::here("simple_slopes_ts1.R"), local = knitr::knit_global())
+# source(here::here("simple_slopes_ts4.R"), local = knitr::knit_global())
+# source(here::here("simple_slopes_ts12.R"), local = knitr::knit_global())
+# source(here::here("simple_slopes_ts60.R"), local = knitr::knit_global())
+```
+
+# Load calculated simple slopes 
+```{r load calculated simple slopes, echo=FALSE}
+load(here::here("Analysis/RData/Mixed_models/simslopes_ts1_240319.RData"))
+load(here::here("Analysis/RData/Mixed_models/simslopes_ts4_240319.RData"))
+load(here::here("Analysis/RData/Mixed_models/simslopes_ts12_240319.RData"))
+load(here::here("Analysis/RData/Mixed_models/simslopes_ts60_240320.RData"))
+```
+
+# Plot simple slopes
+```{r create plot of simple slopes}
+## load individual plots into variables
+baseline_ts1 <- ss_RT_ts1_noCentering_full_random_structure$jn[[1]]$plot
+one_back_ts1 <- ss_RT_ts1_noCentering_full_random_structure$jn[[2]]$plot
+two_back_ts1 <- ss_RT_ts1_noCentering_full_random_structure$jn[[3]]$plot
+
+baseline_ts4 <- ss_RT_ts4_noCentering_full_random_structure$jn[[1]]$plot
+one_back_ts4 <- ss_RT_ts4_noCentering_full_random_structure$jn[[2]]$plot
+two_back_ts4 <- ss_RT_ts4_noCentering_full_random_structure$jn[[3]]$plot
+
+baseline_ts12 <- ss_RT_ts12_noCentering_full_random_structure$jn[[1]]$plot
+one_back_ts12 <- ss_RT_ts12_noCentering_full_random_structure$jn[[2]]$plot
+two_back_ts12 <- ss_RT_ts12_noCentering_full_random_structure$jn[[3]]$plot
+
+baseline_ts60 <- ss_RT_ts60_noCentering_full_random_structure$jn[[1]]$plot
+one_back_ts60 <- ss_RT_ts60_noCentering_full_random_structure$jn[[2]]$plot
+two_back_ts60 <- ss_RT_ts60_noCentering_full_random_structure$jn[[3]]$plot
+
+plot_list1 <- list(baseline_ts4, baseline_ts12, baseline_ts60)
+plot_list2 <- list(one_back_ts4, one_back_ts12, one_back_ts60)
+plot_list3 <- list(two_back_ts4, two_back_ts12, two_back_ts60)
+
+plots_upper <- lapply(plot_list1, function(x) x + 
+                        scale_y_continuous(limits = c(-0.002, 0.004)) +
+                        theme_bw(16) +
+                        theme(legend.position = "none",
+                           axis.title.x = element_blank(),
+                           axis.ticks.x = element_blank(),
+                           axis.text.x = element_blank(),
+                           axis.title.y = element_blank(),
+                           axis.ticks.y = element_blank(),
+                           axis.text.y = element_blank(),
+                           panel.grid = element_blank()) +
+                        labs(title = NULL))
+
+plots_center <- lapply(plot_list2, function(x) x + 
+                        scale_y_continuous(limits = c(-0.002, 0.004)) +
+                        theme_bw(16) +
+                        theme(legend.position = "none",
+                              axis.title.x = element_blank(),
+                              axis.ticks.x = element_blank(),
+                              axis.text.x = element_blank(),
+                              axis.title.y = element_blank(),
+                              axis.ticks.y = element_blank(),
+                              axis.text.y = element_blank(),
+                              panel.grid = element_blank()) +
+                        labs(title = NULL))
+
+plots_bottom <- lapply(plot_list3, function(x) x + 
+                         scale_y_continuous(limits = c(-0.002, 0.004)) +
+                         theme_bw(16) +
+                         theme(legend.position = "none",
+                               axis.title.x = element_blank(),
+                               axis.title.y = element_blank(),
+                               axis.ticks.y = element_blank(),
+                               axis.text.y = element_blank(),
+                               panel.grid = element_blank()) +
+                         labs(title = NULL))
+
+bs <- list(baseline_ts1 +
+  scale_y_continuous(limits = c(-0.002, 0.004)) +
+  theme_bw(16) +
+  theme(legend.position = "none",
+        axis.title.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.title.y = element_blank(),
+        panel.grid = element_blank()) +
+  labs(title = NULL))
+oneback <- list(one_back_ts1 +
+            scale_y_continuous(limits = c(-0.002, 0.004)) +
+            theme_bw(16) +
+            theme(legend.position = "none",
+                   axis.title.x = element_blank(),
+                   axis.ticks.x = element_blank(),
+                   axis.text.x = element_blank(),
+                   axis.title.y = element_blank(),
+                  panel.grid = element_blank()) +
+             labs(title = NULL))
+twoback <- list(two_back_ts1 +
+             scale_y_continuous(limits = c(-0.002, 0.004)) +
+             theme_bw(16) +
+             theme(legend.position = "none",
+                   axis.title.x = element_blank(),
+                   axis.title.y = element_blank(),
+                   panel.grid = element_blank()) +
+             labs(title = NULL))
+
+# arrange everything in one large plot
+plot_sim_slopes <- ggarrange(plots = c(bs, plots_upper, oneback, plots_center, twoback, plots_bottom), ncol = 4, nrow = 3)
+ggsave(plot = plot_sim_slopes, file = paste0("plot_sim_slopes_all_ts_", today, ".pdf"), width = 8, height = 5)
+```
+

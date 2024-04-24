@@ -1,0 +1,3234 @@
+---
+title: "EXNAT – Analysis of Lab & Online Data"
+author: "Merle Schuckart & Sandra Martin"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    code_folding: hide
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r file setup, echo = FALSE}
+rm(list = ls()) # clear environment
+knitr::opts_chunk$set() # set default options for all code blocks in this document
+options(scipen = 999) # don't use scientific notation for very large or small numbers
+
+```
+
+## Load packages
+```{r packages, echo = FALSE, message = FALSE, warning = TRUE}
+
+# Create a list with needed libraries
+pkgs <- c("here", # for working with relative paths
+          "ggeffects", # create data frames of marginal effects for 'ggplot' from model outputs
+          "rstudioapi", # for getting path of this file
+          "stringr", # for getting substrings
+          "ggplot2", # for plots
+          "cowplot", # also for plots
+          "scales", # for setting pretty axis breaks
+          "MKdescr", # for log-axes in ggplot
+          "dplyr", # for replacing multiple values in vector with different values
+          "reshape2", # for reshaping df format
+          "data.table", # for data tables
+          "tidyverse", # for aggregating
+          "R.utils", # for deleting all empty csv files in the directory
+          "psycho", # for computing d-prime values
+          "yarrr", # for plotting
+          "devtools", # for getting packages from github
+          "lattice", # for quick & dirty density plots
+          "gtools", # for getting tuples from list
+          #"DescTools", # for checking normality of distribution in QQ plot
+          "easystats", # also for working with lme4 model output, contains "performance" & "see" I think?
+          "see", # for plotting residuals of lme4 model
+          "performance", # needed for plotting the lme4 model output summary
+          "lme4", # also for linear mixed models, but no p-values in the summary
+          "lmerTest", # extension of lme4 - for tab_model() for showing lme4 model results
+          "modelsummary", # for printing model fit measures
+          "car", # for basic Anova() function & aGSIFs (= basically weird adjusted VIFs)
+          "sjPlot", # for running Anova & showing results in a HTML table in the Viewer
+          "purrr", # for satterthwaite p-value correction in tab_model function
+          "BayesFactor", # that's self-explanatory
+          "interactions", # for simple slopes analysis
+          "patchwork", # needed for check_model plotting function
+          "glmnet", # for elastic net regression
+          "caret", # for choosing the best tuning parameters for elastic net regression
+          "beepr", # to play Super Mario sound when script finished running
+          "effects", # for plotting lmm interaction & main effects
+          "gridExtra") # for showing several plots in a grid
+
+
+# Load each listed library, check if it's already installed
+# and install if necessary
+for (pkg in pkgs){
+  if(!require(pkg, character.only = TRUE)){
+    install.packages(pkg)
+    library(pkg, character.only = TRUE)
+  }
+}
+
+# install package with lists of stop words from github
+devtools::install_github("quanteda/stopwords")
+library(stopwords)
+
+#here::i_am("EXNAT-1_Analysis.Rmd") # set path to the current file so we have the Onlinestudy_EXNAT-1 folder as our working directory
+
+```
+
+## Load d-prime function from different R script:
+```{r source d-prime function, echo = FALSE}
+source(here::here("Analysis/get_dprime.R")) # get script
+```
+
+## Load df from RData
+```{r}
+# df cleaned from outliers and without n-back tasks
+load(here::here("Analysis/RData/df_clean_all_subjects.RData"))
+
+# df for lmm: without outliers and without n-back tasks
+load(here::here("Analysis/RData/lmm_df_all_subjects.RData")) 
+
+# df with comprehension question performance:
+#load(here::here("Analysis/RData/df_comprehension_Qs.RData")) 
+
+# load demographics df:
+#load(here::here("Analysis/RData/df_demogr.RData")) 
+
+
+# load lmm results:
+# m_dprimes <- readRDS(here::here("Analysis/RData/m_dprimes.rds"))
+# m_compr_Qs <- readRDS(here::here("Analysis/RData/m_compr_Qs.rds"))
+# m_RT_ts1_age_centered_random_slope <- readRDS(here::here("Analysis/RData/m_RT_ts1_age_centered_random_slope.rds"))
+# m_RT_ts4_age_centered_random_slope <- readRDS(here::here("Analysis/RData/m_RT_ts4_age_centered_random_slope.rds"))
+# m_RT_ts12_age_centered_random_slope <- readRDS(here::here("Analysis/RData/m_RT_ts12_age_centered_random_slope.rds"))
+# m_RT_ts60_age_centered_random_slope <- readRDS(here::here("Analysis/RData/m_RT_ts60_age_centered_random_slope.rds"))
+# m_RT_ts1_No_centering_age_random_slope <- readRDS(here::here("Analysis/RData/m_RT_ts1_No_centering_age_random_slope.rds")) 
+# m_RT_ts4_No_centering_age_random_slope <- readRDS(here::here("Analysis/RData/m_RT_ts4_No_centering_age_random_slope.rds")) 
+# m_RT_ts12_No_centering_age_random_slope <- readRDS(here::here("Analysis/RData/m_RT_ts12_No_centering_age_random_slope.rds")) 
+# m_RT_ts60_No_centering_age_random_slope <- readRDS(here::here("Analysis/RData/m_RT_ts60_No_centering_age_random_slope.rds")) 
+
+```
+
+
+## Settings for plots
+```{r Theme for plots, echo = FALSE}
+apatheme <- theme_bw()+
+  theme(plot.title = element_blank(), 
+        panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        axis.line = element_line(),
+        text = element_text(family = 'sans',size = 14)) #panel.grid.major=element_blank(),
+
+today <- Sys.Date()
+today <- format(today, format="%y%m%d")
+
+
+# Custom colour palettes for the plots:
+
+# for distinguishing between age groups:
+palet_lab_online <- c("#D2BFE7", # lab
+                      "#977FB2") # online
+
+# for distinguishing between cognitive load conditions: 
+palet_load <- c("#575A7B", # Reading Only
+                "#ED9201", # 1-back
+                "#982126") # 2-back
+# --> I used these on my poster for the different n-back conditions, 
+#     should be distinguishable even for people with impaired colour vision - Merle
+
+# for distinguishing between n-back tasks (single- & dual 1- and 2-back)
+palet_dprimes = c("#ED9201", # 1-back Dual
+                  "#fec160", # 1-back Single
+                  "#982126", # 2-back Dual
+                  "#d95459") # 2-back Single
+palet_dprimes_lines = c("#cb7d00", # 1-back Dual
+                        "#ED9201", # 1-back Single
+                        "#982126", # 2-back Dual
+                        "#d95459") # 2-back Single
+
+# for simple slopes plots:
+palet_simple_slopes = c("#585858", # n.s.
+                        "#0c6ae8") # sign.
+
+# For effects we don't really have colours for. Like age or surprisal.
+palet_effects <- c("#365464") 
+
+```
+
+
+## Set path to datasets
+```{r path setup, echo = FALSE}
+# online and lab data should be all in 1 folder:
+path_data_folder <- here::here("Analysis/Data/raw_data/")
+```
+
+
+
+## Read in data & do preprocessing on participant-level
+
+In this chunk, we read in every dataset individually, compute reading times, reading speed, d-primes, comprehension question performance, and so on, 
+add a few information on the words we used (e.g. surprisal scores on our 4 time scales, word frequencies, word lengths, punctuation,...), 
+and then we exclude data on participant- and block-level:
+We only exclude participants if they were distracted during the experiment or we noticed recording errors.
+We only exclude data on block-level if performance measures indicate they didn't do the task(s) correctly.
+
+```{r read in and preprocess data, echo = FALSE}
+
+# Get list of all .csv files in the data folder
+# --> online data from Lübeck & lab data from Leipzig are all in one folder
+# --> The online datasets have a long string of numbers and letters as a name, 
+#     the lab datasets are called YA + a number for the younger adults and OA + a number for the older adults.
+file_list <- list.files(path = path_data_folder, pattern='.csv')
+
+# Placeholders df for demographics, questions & text data
+df_demogr           <- data.frame()
+df_text_data        <- data.frame()
+df_comprehension_Qs <- data.frame()
+
+# Loop files in my file list aka directory
+for (i in 1:length(file_list)) {
+
+  # PREPARE FILE FOR PREPROCESSING
+  # Read in current file
+  subj_df <- read.csv(paste(path_data_folder, file_list[i],sep = ""), sep = ",")
+
+  # If the df is separated by a semicolon instead of a comma, we only get
+  # one messed-up column. In this case, use semicolon as separator for csv:
+  if (ncol(subj_df) == 1) {
+    subj_df <- read.csv(paste(path_data_folder, file_list[i],sep = ""), sep = ";")
+  }
+  
+  # check if we have enough data for the analysis
+  # I only want full datasets, but it's not crucial that we have
+  # data for the experiment check and the end slide
+  # If the session was aborted before,
+  # end current iteration & go to next file
+  if (length(which(subj_df$sender == "Demographics_2")) < 1){
+    message("Participant aborted session prematurely - going to next dataset now")
+    next
+  }
+
+  ###########################
+  
+  # Quick plastic surgery for some of the datasets:
+  
+  # In some datasets, where text 05 is shown in one of the 2-back main blocks, 
+  # there are no values for text_nr and block_kind.
+  # So add "text_05" and "2back_main" there if the 
+  # current dataset has these missing values.
+  
+  # Check if there is a dataset where comprehension questions for text_05 were shown (= ended on form submission)
+  # and there are no values for block_kind and text_nr. If there is one, find the correct row and add the missing data there.
+  if (length(subset(subj_df, sender == "Qs text_05" & block_kind == "" & text_nr == "" & ended_on == "form submission")$ID) == 1){
+    #print("FIXING SCRIPT DATA SAVING ERROR IN THIS DATASET!")
+    subj_df[which(subj_df$sender == "Qs text_05" & subj_df$ended_on == "form submission"),]$block_kind = "2back_main"
+    subj_df[which(subj_df$sender == "Qs text_05" & subj_df$ended_on == "form submission"),]$text_nr = "text_05"
+    
+  }
+
+  # That's it!
+
+  ###########################
+
+  # ADD DEMOGRAPHICS
+
+  # find out in which row the demographic informations are:
+  row_demogr1    <- which(subj_df$sender == "Demographics_1")
+  row_handedness <- which(subj_df$sender == "Handedness")
+  row_ids        <- which(subj_df$sender == "ID")
+  row_demogr2    <- which(subj_df$sender == "Demographics_2")
+
+  # get demographical data:
+  id                          <- subj_df[row_ids, ]$ID # individual code
+  
+  age                         <- subj_df[row_demogr1, ]$age # age in years
+  gender                      <- subj_df[row_demogr1, ]$gender # gender in passport
+  education                   <- subj_df[row_demogr1, ]$education # highest degree
+  handedness                  <- subj_df[row_handedness, ]$handedness # handedness
+
+  native_speaker              <- as.logical(subj_df[row_demogr1, ]$native_speaker) # German = mothertongue?
+  seeing_impaired             <- as.logical(subj_df[row_demogr1, ]$seeing_impaired) # impaired eyesight?
+  seeing_impairment_corrected <- as.logical(subj_df[row_demogr1, ]$glasses_contacts) # currently wearing glasses / contacts?
+
+  # One participant skipped the demographics for some reason, so add the missing information we could reconstruct:
+  if (id == "C13RDO"){
+    age    <- 31 # age in years
+    gender <- "m" # gender in passport
+    education <- "undergrad" # highest degree
+  } 
+  
+  
+  # add current index to ID so we can distinguish between 
+  # participants who happen to have the same ID ("YA005" and "MA007" share an ID unfortunately):
+  id <- paste(id, i, sep = "")
+  
+  # Some datasets were recorded in the lab, some online. 
+  # The file names of the ones from the lab start with "YA" for "young adult", and "OA" for "old adult",
+  # so save location based on file name.
+  
+  # If the current file name starts with YA, MA or OA, it's from the lab:
+  if (substr(file_list[i], start = 1, stop = 2) == "YA" | 
+      substr(file_list[i], start = 1, stop = 2) == "OA" | 
+      substr(file_list[i], start = 1, stop = 2) == "MA"){
+    recording_location <- "lab"
+    
+    # information from Prolific (all empty because this only applies to online studies):
+    code               <- ""
+    confirmation_code  <- ""
+    prolific_id        <- ""
+    
+    # exclusion criteria check --> All FALSE because screened before invitation to the lab
+    drugs                       <- FALSE
+    alcohol                     <- FALSE
+    psych_dis                   <- FALSE
+    neur_dis                    <- FALSE
+    stroke                      <- FALSE
+    medicine                    <- FALSE
+    infect_dis                  <- FALSE
+    
+    # Were all stimuli displayed properly? --> TRUE because lab study
+    exp_words_displayed         <- TRUE
+    exp_colours_distinguishable <- TRUE
+    # any technical issues or distractions? --> FALSE because lab study
+    exp_distracted              <- FALSE
+    exp_tech_issues             <- FALSE
+    row_exp_check <- ""
+    
+    
+  # If the current file doesn't start with YA, MA or OA, it's an online dataset:
+  } else {
+    recording_location <- "online"
+    prolific_id        <- subj_df[row_ids, ]$prolific_ID  # Prolific ID
+    
+    # Prolific confirmation code for completed experiments
+    # and automatically generated participant code:
+    code               <- subj_df[1, ]$code
+    confirmation_code  <- subj_df[1, ]$confirmationCodeOngoing  
+    
+    # exclusion criteria check:
+    drugs                       <- as.logical(subj_df[row_demogr2, ]$drugs) # took drugs in the past 4 weeks / before / during the experiment?
+    alcohol                     <- as.logical(subj_df[row_demogr2, ]$alcohol) # drank alcohol before/during experiment?
+    psych_dis                   <- as.logical(subj_df[row_demogr2, ]$psych_disorder) # psychological disorder (e.g. depression)?
+    neur_dis                    <- as.logical(subj_df[row_demogr2, ]$neur_disorder) # neurological disease (e.g. dementia)?
+    stroke                      <- as.logical(subj_df[row_demogr2, ]$stroke) # has had a stroke in the past?
+    medicine                    <- as.logical(subj_df[row_demogr2, ]$medicine) # takes medicine that makes you sleepy?
+    infect_dis                  <- as.logical(subj_df[row_demogr2, ]$currently_sick) # feels sick (Covid, Long Covid, cold, RSV,...)
+    
+    # get information concerning the study (if they made it to the last slide and answered the questions):
+    if (length(which(subj_df$sender  == "Experiment_Check"))     > 0){
+      # get row where we can find all information concerning the experiment
+      row_exp_check               <- which(subj_df$sender == "Experiment_Check")
+      # get information
+      exp_words_displayed         <- as.logical(subj_df[row_exp_check, ]$exp_check_words_displayed) # could see the words?
+      exp_colours_distinguishable <- as.logical(subj_df[row_exp_check, ]$exp_check_colours_distinguishable) # could distinguish the colours easily?
+      exp_distracted              <- as.logical(subj_df[row_exp_check, ]$exp_check_distracted) # was distracted (e.g. by a person, music, a movie)?
+      exp_tech_issues             <- subj_df[row_exp_check, ]$exp_check_technical_issues # were there technical issues (e.g. internet connection crashing)?
+      
+    # if the study was ended before the last slide...
+    } else {
+      # just assume everything was okay, I don't know what to do about them now
+      # get information
+      exp_words_displayed         <- TRUE # could see the words?
+      exp_colours_distinguishable <- TRUE # could distinguish the colours easily?
+      exp_distracted              <- FALSE # was distracted (e.g. by a person, music, a movie)?
+      exp_tech_issues             <- "unclear" # were there technical issues (e.g. internet connection crashing)?
+    }
+    
+  }
+
+  # print message
+  message(paste(i, " - Reading in file ", file_list[i], ", participant ID: ", id, sep = ""))
+
+  # add column with info on whether participant should be excluded
+  excl <- FALSE
+
+  # append to demographics df
+  df_demogr <- as.data.frame(rbind(df_demogr,
+                                   cbind(id, recording_location, code, prolific_id, confirmation_code,
+                                         age, gender, education, handedness,
+                                         native_speaker, seeing_impaired,
+                                         seeing_impairment_corrected,
+                                         drugs, alcohol,
+                                         psych_dis, neur_dis, stroke,
+                                         medicine, infect_dis,
+                                         exp_words_displayed,
+                                         exp_colours_distinguishable,
+                                         exp_distracted, exp_tech_issues,
+                                         excl)))
+
+  # remove helper variables to keep things tidy
+  rm (gender, education, handedness,
+      native_speaker, seeing_impaired,
+      seeing_impairment_corrected, drugs, alcohol,
+      psych_dis, neur_dis, stroke, medicine, infect_dis,
+      exp_words_displayed, exp_colours_distinguishable,
+      exp_distracted, exp_tech_issues,
+      row_demogr1, row_demogr2,
+      row_exp_check, row_handedness, excl)
+
+  ###########################
+
+  # append information on age & recording location:
+  subj_df$age                <- age
+  subj_df$recording_location <- recording_location
+
+  # save copy of big df because I'll "shrink" it a bit now
+  subj_df_raw <- subj_df
+  
+  
+  ###########################
+  
+  # GET RAW TEXT & N-BACK DATA
+
+  # get words & information on the text from data
+  subj_df     <- subset(subj_df, sender == "word" | sender == "fix_word" | sender == "Stimulus")
+  subj_df     <- subj_df[ , c("age", "recording_location", "sender", "word", "duration", 
+                              "text_nr","block_kind", "colour", "target", "nback_response", 
+                              "nback_RT", "trial_nr", "time_render")]
+
+  # get rid of reading baseline training (that was just a practice block for the participants)
+  subj_df     <- subset(subj_df, block_kind != "reading_baseline_training")
+
+  # If the participant repeated one of the n-back training blocks, only look at the second one.
+  # Reason: I assume that you only repeat the training if you're not sure you
+  #         understood the task correctly the first time.
+
+  # for 1-back training:
+  #if (length(which(subj_df$block_kind == "1back_single_training2")) > 0) {
+  #  subj_df   <- subset(subj_df, block_kind != "1back_single_training1")
+  #}
+  # for 2-back training:
+  #if (length(which(subj_df$block_kind == "2back_single_training2")) > 0) {
+  #  subj_df   <- subset(subj_df, block_kind != "2back_single_training1")
+  #}
+
+  ###########################
+
+  ### ADD NUMBERED BLOCK NAMES ####
+
+  # We have each main block twice, but I would like to exclude outliers by block and not by condition.
+  # Reason: Reading times in second block might be slightly different than in first block, so don't mix them up.
+
+  # first, just copy the "old" block names
+  subj_df$block_names_numbered <- subj_df$block_kind
+
+  # Get all 1-back blocks and call the first 300 trials "1back_main_1". Call the remaining 300 trials "1back_main_2".
+  # Do this for Reading BL & 2-back main, too. The single-task blocks don't have to be changed because they're only presented once.
+  change_blocknames <- c("Reading_BL_main", "1back_main", "2back_main")
+
+  for (change_block_name in change_blocknames){
+    # get the first 300 trials (each block has 300 trials so the first 300 trials = 1st block.
+    # There are 2 rows for each trial, which means we need the first 600 rows for the 1st block.)
+    subj_df[which(subj_df$block_names_numbered == change_block_name), ]$block_names_numbered[c(1:600)] <- paste(change_block_name,"_1", sep = "")
+    subj_df[which(subj_df$block_names_numbered == change_block_name), ]$block_names_numbered           <- paste(change_block_name,"_2", sep = "")
+  }
+
+  ## we have to add block numbers for single n-back blocks in lab participants because they did two blocks of each single n-back task
+    if (subj_df$recording_location[1] == "lab") {
+    
+      change_blocknames <- c("1back_single_main", "2back_single_main")
+    
+      for (change_block_name in change_blocknames){
+      # get the first 45 trials
+      # There are 2 rows for each trial, which means we need the first 90 rows for the 1st block.)
+      
+        subj_df[which(subj_df$block_names_numbered == change_block_name), ]$block_names_numbered[c(1:90)] <- paste(change_block_name,"_1", sep = "")
+      
+        subj_df[which(subj_df$block_names_numbered == change_block_name), ]$block_names_numbered <- paste(change_block_name,"_2", sep = "")
+      }
+    }
+
+  # Also add block number aka position of the block in the experiment.
+  # This way, I can control for tiredness effects.
+  unique(subj_df$block_names_numbered)
+  # loop block_names_numbered aka individual blocks
+  block_nr <-  1
+  subj_df$block_nr <- NA
+  
+  if (subj_df$recording_location[1] == "online") {
+  # use all block names you want to get numbers for. I don't care about the training repetitions, but all other blocks get numbers.
+    blocks <- c("reading_BL_training", "Reading_BL_main_1",  "Reading_BL_main_2",
+                "2back_single_training1", "2back_single_main", "2back_main_1",  "2back_main_2",    
+                "1back_single_training1", "1back_single_main", "1back_main_1", "1back_main_2")
+    
+    for (block in unique(subj_df$block_names_numbered)){
+      # if the current block name is one of the main blocks, add block number
+      if (block %in% blocks){
+        subj_df[which(subj_df$block_names_numbered == block), "block_nr"] <- block_nr
+        # go to next block
+        block_nr <-  block_nr + 1
+      }
+    }
+  } else if (subj_df$recording_location[1] == "lab") {
+    blocks <- c("reading_BL_training", "Reading_BL_main_1",  "Reading_BL_main_2", "2back_single_training1", "2back_single_main_1", "2back_single_main_2", "2back_main_1",  "2back_main_2", "1back_single_training1", "1back_single_main", "1back_single_main_2", "1back_main_1", "1back_main_2")
+    
+    for (block in unique(subj_df$block_names_numbered)){
+      # if the current block name is one of the main blocks, add block number
+      if (block %in% blocks){
+        subj_df[which(subj_df$block_names_numbered == block), "block_nr"] <- block_nr
+        # go to next block
+        block_nr <-  block_nr + 1
+      }
+    }
+  }
+  
+  
+  ###########################
+
+  ### COMPUTE READING TIMES ####
+
+  # add durations of fix_word slides and word slides so we get
+  # total reading time estimates for each word
+  fix_word_durations = subj_df[which(subj_df$sender == "fix_word"), ]$duration
+  subj_df[which(subj_df$sender == "word"), ]$duration = subj_df[which(subj_df$sender == "word"), ]$duration + fix_word_durations
+
+  # get rid of fix_word slides so we don't get confused later.
+  subj_df <- subset(subj_df, sender != "fix_word")
+
+  # Edit durations aka reading times:
+  # If the numbers are saved as strings like this: "234,789"),
+  # replace comma by point and typecast to numeric
+  #if (class(subj_df$duration) == "character"){
+  #  subj_df$duration <- scan(text = subj_df$duration, dec=",", sep=".")
+  #} else {
+  #  subj_df$duration <- as.numeric(subj_df$duration)
+  #}
+
+  # append column with ID of current participant
+  subj_df$ID <- id
+
+  ###########################
+
+  ### COMPUTE READING SPEED ####
+
+  # append column with log-transformed reading times
+  #subj_df$duration_log <- log(subj_df$duration)
+
+  # append reading speed column (words / 100 s as in Lea's thesis)
+  subj_df$reading_speed <- 100 * 1000 / subj_df$duration
+
+  # Explanation for future Merle because for some reason this confuses me every time I stumble upon this:
+  # Reading speed is defined as # of words you read / 100 seconds. 
+  # Why 100 seconds and not 1 min for example? Unclear.
+  # Now we only have the reading time in ms for the current word, so we have to see how 
+  # many words we could fit into a period of 100 s (which is 100 * 1000 ms = 100000 ms)
+  # assuming we kept this exact pace for each word.
+  # To check this, we divide the time interval in ms by the time it took to read 1 word. 
+  # The resulting value is the number of words that we could read in 100 s aka the reading speed.
+  # reading speed = 100 seconds * 1000 ms / reading time
+  
+  ###########################
+  
+  # GET ADDITIONAL INFORMATION ON THE TEXTS:
+
+  ### PUNCTUATION ####
+
+  # Edit the texts a bit. Currently, we have words & punctuation
+  # mixed up. Would be nice if we had one word column
+  # and some others with info on punctuation.
+
+  punctuation <- c(rep("", times = length(subj_df$ID)))
+
+  # get all .
+  punctuation[grep("[.]", subj_df$word)] <- "point"
+  # get all ?
+  punctuation[grep("[?]", subj_df$word)] <- "question_mark"
+  # get all !
+  punctuation[grep("[!]", subj_df$word)] <- "exclamation_mark"
+  # get all ,
+  punctuation[grep("[,]", subj_df$word)] <- "comma"
+  # get all ;
+  punctuation[grep("[;]", subj_df$word)] <- "semicolon"
+  # get all :
+  punctuation[grep("[:]", subj_df$word)] <- "colon"
+
+  # get all "
+  # This is tricky for various reasons:
+
+  # 1. there could be quotes directly after or
+  # before a point for example
+
+  # Idea: Separate column for quotes
+  quotes <- c(rep("", times = length(subj_df$ID)))
+
+  # 2. I want to differentiate between opening and closing quotes,
+  # but they look the same.
+
+  # Idea: make them all "opening quotes" and change every second one to
+  # "closing_quote". This should do the trick.
+  quotes[grep("\"", subj_df$word)] <- "opening_quote"
+  opening <- TRUE
+
+  # loop list of quotes
+  for (x in 1:length(quotes)){
+    # get current value in vector "quotes" & current word
+    curr_val  <- quotes[x]
+    curr_word <- subj_df$word[x]
+
+    if (curr_val == "opening_quote" & # if the current value is not empty
+        opening == TRUE & # and we set "opening" to TRUE
+        grepl("\"[A-Za-z0-9]+\"", curr_word) == FALSE){ # and there are not 2 quotes around the word
+
+      # leave it as is, next quote is the closing one
+      opening <- FALSE
+
+      # if we have a quote, but it has to be a closing one, change it accordingly
+    } else if (curr_val == "opening_quote" &
+               opening == FALSE &
+               grepl("\"[A-Za-z0-9]+\"", curr_word) == FALSE){
+      # change value to closing quote
+      quotes[x] <- "closing_quote"
+      # next quote is the opening one
+      opening <- TRUE
+      # if it's a quote around a single word, mark as "both"
+    } else if (curr_val == "opening_quote" &
+               grepl("\"[A-Za-z0-9]+\"", curr_word) == TRUE){
+      # change value to both
+      quotes[x] <- "both"
+    }
+  }
+
+  # remove all punctuation
+  word_single <- gsub('[[:punct:] ]+',' ', subj_df$word)
+  # "trim" away spaces before and after words
+  word_single <- trimws(word_single, which = c("left"))
+  word_single <- trimws(word_single, which = c("right"))
+  # put dashes into spaces between words (words like "ice-cream" for example)
+  word_single <- gsub(" ", "-", word_single, fixed = TRUE)
+
+
+  # get word length for single words
+  word_length_single <- nchar(word_single)
+
+
+  ### N-BACK RESPONSES ####
+
+  # check if we had an n-back reaction while the word was shown
+  # create vector with only FALSEs
+  reaction <- c(rep(FALSE, times = length(subj_df$ID)))
+  # check where in subj_df we have responses (hit or false alarm) and change value in reaction vector to TRUE at that index
+  reaction[which(subj_df$nback_response == "hit" | subj_df$nback_response == "false alarm")] <- TRUE
+
+  # do the same for the subj_df_raw dataframe, because we'll need it later
+  subj_df_raw$reaction <- FALSE
+  # get idx of all rows where n-back response was recorded, mark those as TRUE in the reaction column.
+  subj_df_raw[which(subj_df_raw$nback_response == "hit" | subj_df_raw$nback_response == "false alarm"), "reaction"] <- TRUE
+
+  # Then get idx of all rows containing n-back responses again, but this time only of
+  # slides where sender == word. We're only looking for the dual-task blocks.
+  # Subtract 1 from each idx in this list to get all the slides before. Those should be the "fix_word" slides.
+  # Mark the reaction in those slides as TRUE, too. We need them later.
+  subj_df_raw[which((subj_df_raw$nback_response == "hit" | subj_df_raw$nback_response == "false alarm") & subj_df_raw$sender == "word") - 1, "reaction"] <- TRUE
+
+
+  # APPEND NEW COLUMNS
+  # append punctuation and quotes column, column with words without punctuation
+  # column with length of each the single words and reaction column as
+  # additional columns to subj_df:
+  subj_df <- data.frame(cbind(subj_df, word_single, punctuation,
+                              quotes, word_length_single, reaction))
+
+
+
+  ### STOP WORDS, PUNCTUATION, REACTION AND DURATION OF PREVIOUS WORD ####
+
+  # Now also get previous punctuation, previous quotes, previous
+  # word and previous duration because why not.
+  # First, append empty columns to df:
+  subj_df[, c("previous_word", "previous_punctuation", "previous_quotes", "previous_duration", "previous_reaction", "stop_word")] <- ""
+
+  # get list of German stop_words
+  stop_words <- stopwords("de", source = "snowball")
+  # snowball = stopwords list based on the Snowball stemmer's word lists.
+  # --> https://snowballstem.org/texts/introduction.html
+
+  # now loop rows and gradually fill in the empty columns.
+  for (idx in 1:length(subj_df$sender)){
+    # if it's the first trial of a new block, go to next iteration
+    # because in this case we don't have previous data.
+    # Also skip the following part if it's a block without text.
+    if (subj_df$trial_nr[idx] > 1 && subj_df$sender[idx] == "word"){
+      # fill in the missing data by getting the values from the previous trial:
+      subj_df$previous_word[idx]        <- subj_df$word_single[idx-1]
+      subj_df$previous_punctuation[idx] <- subj_df$punctuation[idx-1]
+      subj_df$previous_quotes[idx]      <- subj_df$quotes[idx-1]
+      subj_df$previous_duration[idx]    <- subj_df$duration[idx-1]
+      subj_df$previous_reaction[idx]    <- subj_df$reaction[idx-1]
+    }
+
+    if (subj_df$sender[idx] == "word" && subj_df$word_single[idx] %in% stop_words){
+      # check if current word is a stop word or not
+      subj_df$stop_word[idx] <- TRUE
+    } else if (subj_df$sender[idx] != "Stimulus"){
+      subj_df$stop_word[idx] <- FALSE
+    }
+  }
+
+
+
+  ### WORD FREQUENCIES & SURPRISAL SCORES ####
+
+  # Include word frequencies & surprisal scores for each word
+
+  # append "empty" word frequency & surprisal score columns to df
+  # to do so, create a vector of column names
+  col_names <- c("word_frequency", paste0("surprisal_", c(1, 4, 12, 60)))#,
+                 #paste0("surprisal_", c(1, 2, 8, 16, 32), "_ortho"),
+                 #paste0("similarity_", c(1, 2, 8, 16, 32)))
+  # then add "empty" columns to data frame subj_df
+  subj_df[, col_names] <- 0
+
+  # get word frequency & surprisal scores for each word
+  # load word freq df
+  word_freqs_df = read.csv(here::here("Analysis/word frequencies/Word_freqs.csv"), sep = ";", header = TRUE)[2:4]
+  # Explanation: We compute the word frequencies using another
+  #              script which is called "calculate_word_frequencies.py".
+  #              You can find it in the Analysis folder.
+  #              --> word frequencies were taken from this python package:
+  #              Speer, R., Chin, J., Lin, A., Jewett, S., & Nathan, L. (2018, October 3).
+  #              LuminosoInsight/wordfreq: v2.2. Zenodo. https://doi.org/10.5281/zenodo.1443582
+
+
+  # Load surprisal scores
+  # load surprisal scores / similarity scores df with TS = context chunk size
+  surprisal_df = read.csv(here::here("Analysis/surprisal scores/surprisal_scores_masked_context.csv"), sep = ",", header = TRUE)
+
+  # Explanation: I computed the scores in Python using a German GPT-2 model. For each text you can select a context chunk of x words (e.g. 5 words)
+  #              and predict the next word. For each possible continuation of your context, you get probabilities.
+  #              If you get the probability for the actual word and compute the negative log of it, you have the surprisal score
+  #              for your word on time scale x (e.g. 5 words = TS 5). The time scales are all highly correlated, which might be due to the fact that each
+  #              time scale also includes context information from all lower timescales, so it's like a Russian doll situation.
+  #              To deal with this problem, we masked all words that were already processed in lower time scales,
+  #              so each time scale only uses the "new" parts of the input chunk.
+
+
+  # loop individual texts
+  for (curr_text_nr in unique(subj_df$text_nr)){
+
+    # in some blocks we don't have texts, so skip those
+    if (curr_text_nr == ""){
+      next
+      # if it's a text block, though, assign word frequencies from csv
+    } else {
+      #print(curr_text_nr) # uncomment this if you'd like to show the texts each participant read
+
+      # get word frequencies for current text nr
+      curr_word_freqs <- subset(word_freqs_df, text_nr == curr_text_nr)$word_frequency
+      # find out where in the subj_df text the text is located and add the word frequencies there
+      subj_df[which(subj_df$text_nr == curr_text_nr),]$word_frequency <- curr_word_freqs
+
+      # Do the same for the surprisal scores.
+      curr_surprisals <- subset(surprisal_df, text_nr == curr_text_nr)
+
+      # find out where in the subj_df text the current text nr is located
+      curr_row <- which(subj_df$text_nr == curr_text_nr)
+
+      # add the surprisal scores (untransformed & orthogonalized scores) there
+      subj_df[curr_row, c("surprisal_1", "surprisal_4",
+                          "surprisal_12", "surprisal_60")]  <- curr_surprisals[c("surprisal_1", "surprisal_4",
+                                                                                 "surprisal_12",  "surprisal_60")]
+      #subj_df[curr_row, c("surprisal_1_ortho", "surprisal_2_ortho",
+      #                    "surprisal_8_ortho", "surprisal_16_ortho",
+      #                    "surprisal_32_ortho")]                     <- curr_surprisals[c("surprisal_1_ortho", "surprisal_2_ortho",
+      #                                                                                    "surprisal_8_ortho", "surprisal_16_ortho",
+      #                                                                                    "surprisal_32_ortho")]
+
+    }# END if
+  }# END loop texts
+
+  
+  ### GET SURPRISAL SCORES OF PREVIOUS WORD ####
+  # --> basically do the same again as before, but add surprisal scores for current for to row of next word.
+
+  # append "empty" word frequency & surprisal score columns to df
+  # to do so, create a vector of column names
+  col_names <- c("word_frequency_previous_word", paste0("previous_surprisal_", c(1, 4, 12, 60)))
+  # then add "empty" columns to data frame subj_df
+  subj_df[, col_names] <- 0
+
+  # loop individual texts
+  for (curr_text_nr in unique(subj_df$text_nr)){
+
+    # in some blocks we don't have texts, so skip those
+    if (curr_text_nr == ""){
+      next
+      # if it's a text block, though, assign word frequencies from csv
+    } else {
+      #print(curr_text_nr) # uncomment this if you'd like to show the texts each participant read
+
+      # get word frequencies for current text nr
+      curr_word_freqs <- subset(word_freqs_df, text_nr == curr_text_nr)$word_frequency
+
+      # now this is where we do it differently than before: Remove the last value and add 1 NA
+      # at idx = 1 of the vector, so the values are moved by 1 position.
+      curr_word_freqs <- c(NA, curr_word_freqs[-length(curr_word_freqs)])
+
+      # find out where in the subj_df text the text is located and add the word frequencies there
+      subj_df[which(subj_df$text_nr == curr_text_nr),]$word_frequency_previous_word <- curr_word_freqs
+
+      # Do the same for the surprisal scores:
+      curr_surprisals <- subset(surprisal_df, text_nr == curr_text_nr)[ , c("surprisal_1", "surprisal_4",
+                                                                            "surprisal_12", "surprisal_60")]
+
+      # add 1 NA to the start of the vectors, remove last value in each
+      curr_surprisals <- rbind(c(NA, NA, NA, NA), curr_surprisals[-nrow(curr_surprisals), ])
+
+      # find out where in the subj_df text the current text nr is located
+      curr_row <- which(subj_df$text_nr == curr_text_nr)
+
+      # add the surprisal scores (untransformed & orthogonalized scores) there
+      subj_df[curr_row, c("previous_surprisal_1", "previous_surprisal_4",
+                          "previous_surprisal_12","previous_surprisal_60")] <- curr_surprisals
+
+    }# END if
+  }# END loop texts
+
+
+  ### CHANGE ORDER OF DATAFRAME ####
+  # I'm not a big fan of the order of the df, so move around the columns a bit:
+  col_order <- c("ID", "age", "recording_location", 
+                 "sender",  "block_kind", "block_nr", "block_names_numbered",
+                 "trial_nr", "text_nr", "word", "duration", "reading_speed",
+                 "colour", "target", "time_render", "nback_response", "nback_RT", "reaction",
+                 "word_single", "stop_word", "punctuation", "quotes",
+                 "word_length_single", "word_frequency",
+                 "surprisal_1", "surprisal_4", 
+                 "surprisal_12", "surprisal_60",
+                 "previous_surprisal_1", "previous_surprisal_4",
+                 "previous_surprisal_12","previous_surprisal_60",
+                 "word_frequency_previous_word", "previous_word",
+                 "previous_punctuation", "previous_quotes",
+                 "previous_duration", "previous_reaction")
+
+  subj_df <- subj_df[, col_order]
+
+  
+  ###########################
+  # GET PERFORMANCE MEASURES:
+
+  ### COMPREHENSION QUESTION PERFORMANCE ####
+  # Check the performance in the reading comprehension questions in the 2 baseline blocks:
+  # If they don't have 3/3 in at least one of the blocks, exclude their data.
+
+  # We now use the "old" df with all information concerning the questions
+  # get question data:
+  Q_df <- subset(subj_df_raw, Q1 != "")[,c("Q1", "Q2", "Q3", "text_nr", "block_kind", "ID", "age", "recording_location")]
+
+  # fill ID column with id value
+  Q_df$ID <- id
+
+  # For now I don't really care about the answer, I only want to know if they chose the correct one or not.
+  # So change labels a bit.
+
+  # yes I know this is a weird approach
+  Q_df <- Q_df %>% dplyr::mutate(Q1 = dplyr::recode(Q1, "TRUE_a" = "T", "TRUE_b" = "T", "TRUE_c" = "T", "TRUE_d" = "T",
+                                                        "a" = "F", "b" = "F", "c" = "F", "d" = "F"))
+
+  Q_df <- Q_df %>% dplyr::mutate(Q2 = dplyr::recode(Q2, "TRUE_a" = "T", "TRUE_b" = "T", "TRUE_c" = "T", "TRUE_d" = "T",
+                                                        "a" = "F", "b" = "F", "c" = "F", "d" = "F"))
+
+  Q_df <- Q_df %>% dplyr::mutate(Q3 = dplyr::recode(Q3, "TRUE_a" = "T", "TRUE_b" = "T", "TRUE_c" = "T", "TRUE_d" = "T",
+                                                        "a" = "F", "b" = "F", "c" = "F", "d" = "F"))
+  # typecast everything to logical
+  Q_df$Q1 <- as.logical(Q_df$Q1)
+  Q_df$Q2 <- as.logical(Q_df$Q2)
+  Q_df$Q3 <- as.logical(Q_df$Q3)
+
+  # get performance in Qs
+  Q_df$nr_correct <- c(rep(NA, times = length(Q_df$Q1)))
+  # for each block (= row in this df), count how many questions were answered correctly.
+  for (row_idx in 1:length(Q_df$Q1)){
+    # count how many Questions were answered correctly in the current block (= row)
+    nr_correct <- length(which(Q_df[row_idx,c(1:3)] == TRUE))
+    # append to Q_df & subj_df$Q_nr_correct
+    Q_df$nr_correct[row_idx] <- nr_correct
+  }
+
+  # append Q_df to bigger df for all participants
+  df_comprehension_Qs <- as.data.frame(rbind(df_comprehension_Qs, Q_df))
+
+
+  ### N-BACK PERFORMANCE ####
+
+  # set all durations in n-back trials without response to NA
+  # (if no reaction was recorded, the value from the trial before is saved in the df,
+  # just a small error in the experiment but nothing unfixable)
+  subj_df[which(subj_df$reaction == F), ]$nback_RT <- NA
+  # subtract trial onset times (time_render) from the n-back RT values so they make more sense:
+  subj_df[which(subj_df$reaction == T), ]$nback_RT <- subj_df[which(subj_df$reaction == T), ]$nback_RT - subj_df[which(subj_df$reaction == T), ]$time_render
+
+  # add the 50ms from the fixed word period to the n-back response times
+  # get subset with all fix_word durations from all trials where n-back response was recorded
+  fix_word_durations <- subset(subj_df_raw, sender == "fix_word" & reaction == TRUE)$duration
+
+  subj_df[which(subj_df$sender == "word" & subj_df$reaction == T), ]$nback_RT <- subj_df[which(subj_df$sender == "word" & subj_df$reaction == T), ]$nback_RT +
+                                                                                 fix_word_durations
+
+  # check n-back performance in each block:
+  nback_block_names = c("1back_single_training1", "1back_single_training2", "1back_single_main", "1back_main",
+    "2back_single_training1", "2back_single_training2", "2back_single_main", "2back_main")
+
+  # append empty d-prime column to df:
+  subj_df$dprime <- c(rep(NA, times = length(subj_df$word)))
+
+  # loop block names:
+  for (block_name in nback_block_names){
+
+    # check if block name exists in df:
+    if (length(which(unique(subj_df$block_kind) == block_name)) > 0){
+      # if so, compute d-primes:
+
+      # get data for current block
+      curr_block <- subset(subj_df, block_kind == block_name)
+
+      # remove trials where the RT was way too fast
+      # (= participant reacted by accident)
+      curr_block <- subset(curr_block, (nback_RT >= 100 | is.na(nback_RT)))
+
+      # if there are still some trials left (let's say at least 10), compute d-prime
+      if (length(curr_block$ID) > 10){
+        # the main blocks are played twice in the experiment, so separate them
+        if (length(curr_block$ID) > 300){
+          # get first half, compute d-prime & add to bigger df
+          d_prime <- get_dprime(curr_block[c(1:300),]$nback_response)
+          subj_df[which(subj_df$block_kind == block_name)[c(1:300)],]$dprime <- d_prime
+
+          # same procedure for the second half
+          d_prime <- get_dprime(curr_block[c(301:600),]$nback_response)
+          subj_df[which(subj_df$block_kind == block_name)[c(301:600)],]$dprime <- d_prime
+
+          # if there's only one block:
+        } else if (length(curr_block$ID) <= 300){
+          # do it only once
+          d_prime <- get_dprime(curr_block$nback_response)
+          subj_df[which(subj_df$block_kind == block_name),]$dprime <- d_prime
+        } # END if loop - check if block exists twice
+      } # END if loop - check if there are still enough trials left
+    } # END if loop - check for block name in df
+  }# END loop - compute d-primes
+  
+  
+  # We'll use the mean d-prime from 1-back and 2-back single task main blocks
+  # as a working memory measure for each participant. So get mean & append it as a new column to the df.
+  
+  subj_df$mean_dprime_singletasks <- mean(c(unique(subj_df[which(subj_df$block_kind =="1back_single_main"),]$dprime),
+                                            unique(subj_df[which(subj_df$block_kind =="2back_single_main"),]$dprime)))
+  
+  ###########################
+
+  ### MARK PARTICIPANTS/BLOCKS FOR EXCLUSION:
+
+  # append "empty" exclude trial / exclude participant columns to df
+  subj_df$excl_trial       <- FALSE
+  subj_df$excl_participant <- FALSE
+
+  
+  ### EXCLUDE PARTICIPANT IF THERE WERE TECHNICAL ISSUES ####
+  
+  # Online studies are a bit unpredictable, so better check everything was displayed &
+  # recorded correctly before including datasets.
+
+  # check if durations are in a range that makes sense
+  # --> exclude datasets with negative reading times because they should be impossible to achieve.
+  # If there are any, I assume there was something off with the measurement and I can't trust any
+  # of the other durations in this dataset either.
+  
+  # For the reading times, I always took the sum of the duration of the word slide and the duration of the fixed 50 ms slide before. 
+  # Technically, all RTs should be at least 50ms long, but it's possible that sometimes frames are skipped, 
+  # so they could also be shorter, which is why I'm only excluding data that are completely implausible even if all frames were skipped.
+  min_duration <- range(subj_df$duration)[1]
+  if (min_duration < 0){
+    # change value in excl column in df_demogr to TRUE.
+    df_demogr$excl[length(df_demogr$excl)] <- TRUE
+    # set all values in excl_participant column to TRUE
+    #subj_df$excl_participant <- TRUE
+    message("     participant was excluded because there were negative values in the reading times - probably a measurement error!")
+  }
+
+  # now also check if the participant told us there was something weird going on during the experiment:
+
+  #first print any statements on technical issues in the console. 
+  # This was free text input so I have to read them all and check "manually" if everything was okay.
+  message(paste("potential technical issues:", df_demogr$exp_tech_issues[i], sep = " "))
+
+  # typecast some column from df_demogr
+  df_demogr$exp_words_displayed <- as.logical(df_demogr$exp_words_displayed)
+  df_demogr$exp_colours_distinguishable <- as.logical(df_demogr$exp_colours_distinguishable)
+  df_demogr$exp_distracted <- as.logical(df_demogr$exp_distracted)
+  
+  # now check the other experiment check questions:
+  # if words were not displayed properly or colours were NOT distinguishable
+  if (any(c(df_demogr$exp_words_displayed[length(df_demogr$id)], df_demogr$exp_colours_distinguishable[length(df_demogr$id)]) == FALSE)){ 
+    
+    # change value in excl column in df_demogr to TRUE.
+    df_demogr$excl[length(df_demogr$excl)] <- TRUE
+    # set all values in excl_participant column to TRUE
+    #subj_df$excl_participant <- TRUE
+    message("     participant was excluded because they reported errors during running the experiment")
+
+  # Also exclude them if participant reports they were distracted during the experiment:
+  } else if (df_demogr$exp_distracted[length(df_demogr$id)] == TRUE){
+
+    # change value in excl column in df_demogr to TRUE.
+    df_demogr$excl[length(df_demogr$excl)] <- TRUE
+    # set all values in excl_participant column to TRUE
+    #subj_df$excl_participant <- TRUE
+    message("     participant was excluded because they reported they were distracted during the experiment")
+
+  }
+
+  ### EXCLUDE SINGLE BLOCKS BASED ON COMPREHENSION QUESTION PERFORMANCE: ####
+  
+  # Idea: only exclude on block level, don't exclude full datasets because they messed up in 1 condition or so.
+  #       The linear mixed models should be able to deal with this.
+  
+  # loop blocks in Q_df
+  for (curr_block_idx in 1:length(Q_df$block_kind)){
+    # get question data for current block 
+    curr_row <- Q_df[curr_block_idx,]
+
+    # exclude block data if participant answered less than 1/3 questions correctly.
+
+    # check if we have at least 1 correct answer
+    # if not, exclude all trials from this block
+    if (curr_row$nr_correct < 1){
+        # find text nr in subj df and set all values in column excl_trial to TRUE
+        subj_df[which(subj_df$text_nr == curr_row$text_nr), "excl_trial"] <- TRUE
+        message(paste("1 block was excluded because comprehension Q performance was too low (< 2 / 3 correct). Current condition:", curr_row$block_kind, sep = " "))
+    }
+      
+  }# END FOR LOOP for blocks in Q_df
+  
+
+  ### EXCLUDE SINGLE BLOCKS BASED ON N-BACK TASK PERFORMANCE: ####
+
+  # Check blocks with n-back tasks: 
+  # Exclude block if the participant didn't do the n-back task (i.e. if they always/never pressed the target button).
+  # We're excluding based on the d-prime values.
+  # In the dual-task (main) blocks, we always had 50 targets & 250 non-targets. 
+  # The d-prime for 0 hits and 0 false alarms is 0. If they always pressed the button and have 50 hits and 250 false alarms, the d-prime is also 0.
+  # This means that they should have a d-prime above 0 if they at least attempted to do the task or below 0 if they attempted to do the 
+  # task but did it the wrong way around (i.e.reacted if trial was a non-target trial and didn't react if trial was a target trial).
+  
+  # --> exclude all blocks with d-primes == 0.
+  
+  message(paste("excluded", length(subj_df[which(subj_df$dprime == 0), "excl_trial"]), "trials because d-prime was 0", sep = " "))
+  
+  subj_df[which(subj_df$dprime == 0), "excl_trial"] <- TRUE
+
+  
+  # If we need to exclude the whole dataset, do it now:
+  # Print message if the whole dataset of the current participant was excluded, also print info on recording site & age:
+  if (as.logical(df_demogr$excl[length(df_demogr$excl)]) == T){
+    
+    subj_df$excl_participant <- TRUE
+    message("Participant was excluded from further analyses.")
+    message(paste("age", as.character(unique(subj_df$age)), ", recording site:", as.character(unique(subj_df$recording_location))))
+    
+    # Hint: We exclude the whole dataset here by just not appending it to the big df for all 
+    #       participants "df_text_data", but we have to mark them as excluded in the demographics df.
+    
+  } else{
+    message("Participant passed all inclusion criteria.")
+
+    # append subj_df chunk to df_text_data where we collect the data of all participants we want to keep
+    df_text_data <- as.data.frame(rbind(df_text_data, subj_df))
+
+  }
+
+  message("------------------------")
+
+}# END READ IN DATASETS
+
+
+# also append d-primes from df_text_data to df_comprehension_Qs:
+#df_comprehension_Qs
+#df_comprehension_Qs$dprime <- merge(df_comprehension_Qs, df_text_data, by = c("ID", "text_nr"), all.x = TRUE)
+
+# aggregate df_text_data so it has the same length as df_comprehension_Qs
+#tmp_df_text_data <- subset(df_text_data, block_kind %in% unique(df_comprehension_Qs$block_kind))
+
+#tmp_df_text_data <- aggregate(tmp_df_text_data$dprime, 
+#                              by = list(ID = tmp_df_text_data$ID, text_nr = tmp_df_text_data$text_nr), 
+#                              FUN = mean)
+
+#length(tmp_df_text_data$ID)
+
+
+# exclude all trials that we marked for exclusion:
+df_text_data <- subset(df_text_data, excl_trial == FALSE)
+
+# exclude data of participants we excluded from df_comprehension_Qs:
+df_comprehension_Qs <- subset(df_comprehension_Qs, !(ID %in% subset(df_demogr, excl == TRUE)$id))
+
+# clean up!
+
+rm(list=ls()[! ls() %in% c("df_text_data", "df_demogr", "df_comprehension_Qs", "word_freqs_df", 
+                           "surprisal_df", "blocks","apatheme", "palet_load", 
+                           "palet_dprimes", "palet_dprimes_lines", 
+                           "palet_lab_online", "palet9", "today")])
+
+```
+
+## Save raw data in folder "RData"
+```{r save raw data, echo = FALSE}
+
+# save df
+save(df_text_data, file = here::here("Analysis/RData/df_text_data_all_subjects.RData"))
+
+```
+
+## find & exclude outliers using z-sqrt-POMS-transformation
+```{r find and exclude outlier trials, echo = FALSE}
+
+# only use data from the main blocks from now on:
+df_text_data_clean <- subset(df_text_data, block_kind == "Reading_BL_main" |
+                               block_kind == "1back_main" |
+                               block_kind == "2back_main")
+
+message("Nr of trials before exclusion of trials: ", length(df_text_data_clean$ID))
+
+### EXCLUDE BREAKS ####
+# --> Exclude all trials where participants took more than 5 seconds (arbitrary value)
+#     I don't want breaks to influence the scaling of my "usable" data in the next steps
+message(paste(length(subset(df_text_data_clean, duration > 5000)$ID), " trials containing breaks were excluded from further analysis", sep = ""))
+
+df_text_data_clean <- subset(df_text_data_clean, duration <= 5000)
+
+# compare reading time distribution of online & lab data
+#plot_reading_times <- df_text_data_clean
+#densityplot(subset(plot_reading_times, recording_location == "online")$duration)
+#densityplot(subset(plot_reading_times, recording_location == "lab")$duration)
+# --> raw reading time data from the lab look better than from online - again you can see that in the lab, people were a bit slower
+
+# Let's check how this looks like if we divide the lab sample by age group (< 60 and >= 60)
+#densityplot(subset(plot_reading_times, recording_location == "lab" & age >= 60)$duration)
+#densityplot(subset(plot_reading_times, recording_location == "lab" & age < 60)$duration)
+# --> looks like older people are slower, but that's not a big surprise 
+
+# Throw both samples together & plot again
+#densityplot(plot_reading_times$duration)
+
+
+### TRANSFORM DATA ####
+
+#range(df_text_data_clean$duration)
+
+# Try outlier exclusion as described in Cousineau & Chartier, 2010
+# I found this approach in this paper, where it's recommended as the best outlier exclusion method for skewed data
+# https://doi.org/10.3389/fpsyg.2021.675558
+
+# "For each transformed value, the square root of the untransformed value minus the minimum value of the sample divided
+# through the sample range is calculated. The fraction bounds all values between 0 and 1,
+# while the square root enlarges small values (Cousineau and Chartier, 2010).
+# Afterwards, these values are z-transformed and values exceeding a particular z-score (e.g., 2 or 3)
+# are excluded. For the present simulations, we excluded RTs associated with a z-score larger/smaller than ±2 as outliers."
+# (Berger & Kiefer, 2021)
+
+# Long story short:
+# transf_val = sqrt (  ( x - sample_min ) / ( sample_max - sample_min)  )
+# --> after this, z-transform all values and exclude all values exceeding a value of ± 2 (or ± 3, but they used 2 in the paper)
+
+# This is basically a POMS (Little (2013), read in Moeller (2013)) transformation where you get
+# the square root of the output afterwards and z-transform everything.
+
+# Careful, normally, if you wanted to use the transformed values for group comparisons later, 
+# you'd have to to the transformation across participants & conditions, so everything gets "pulled" into the same range.
+# If you do this for each subject & condition separately, you can't compare means
+# anymore, because every subset of data would have its own scale.
+
+# Here, we only want to use the transformation for identifying & excluding outliers, so we don't really care about this problem. 
+# So we can do this on block level, so we don't exclude more trials from "slower" 2-back blocks than from the BL for example.
+
+
+
+# create 4 new columns in df_demogr for keeping track of how many trials were excluded per participant & condition.
+df_demogr$trials_excluded_BL    <- 0
+df_demogr$trials_excluded_1back <- 0
+df_demogr$trials_excluded_2back <- 0
+df_demogr$trials_excluded_all   <- 0
+
+# create new column in df_text_data_clean for the transformed RTs:
+df_text_data_clean$tmp_transformed_RTs <- NA 
+
+# get min reading time
+# sample_min <- min(df_text_data$duration)
+sample_min <- 0 # use smallest possible value here (this is described in a book by Little, 2013) - in this case: 0 words / 100 ms
+
+# loop participants:
+message("start excluding trials (block-wise)")
+for (curr_id in unique(df_text_data_clean$ID)){
+  
+  message("current participant: ", curr_id)
+  
+  # create placeholders to count excluded trials / condition
+  trials_excluded_BL    <- 0
+  trials_excluded_1back <- 0
+  trials_excluded_2back <- 0
+  
+  # get data of current participant:
+  curr_df <- subset(df_text_data_clean, ID == curr_id)
+
+  # loop blocks:
+  for (curr_block in unique(curr_df$block_names_numbered)){
+    #message("current block: ", curr_block)
+  
+    # get data of current block:
+    curr_block_data <- subset(curr_df, block_names_numbered == curr_block)
+
+    # get max reading time (use sample maximum here)
+    sample_max <- max(curr_block_data$duration)
+
+    # do sqrt(POMS) transform of raw reading time values
+    duration_standardized <- sqrt((curr_block_data$duration - sample_min) / (sample_max - sample_min))
+
+    # z-transform reading data
+    duration_standardized <- as.vector(scale(duration_standardized, center = T, scale = T))
+
+    # put the transformed values into the big df with data of all participants:
+    df_text_data_clean[which(df_text_data_clean$ID == curr_id & 
+                             df_text_data_clean$block_names_numbered == curr_block), ]$tmp_transformed_RTs <- duration_standardized
+    
+    # check how many trials we have that are < -2 or > 2:
+    trials_excluded <- length(which(duration_standardized > 2))
+    
+    # check which kind of block we have here & add nr of excluded trials to counter:
+    if (curr_block %in% c("Reading_BL_main_1", "Reading_BL_main_2")){
+      df_demogr[which(df_demogr$id == curr_id), ]$trials_excluded_BL    <- df_demogr[which(df_demogr$id == curr_id), ]$trials_excluded_BL    + trials_excluded
+    } else if (curr_block %in% c("1back_main_1", "1back_main_2")) {
+      df_demogr[which(df_demogr$id == curr_id), ]$trials_excluded_1back <- df_demogr[which(df_demogr$id == curr_id), ]$trials_excluded_1back + trials_excluded
+    } else if (curr_block %in% c("2back_main_1", "2back_main_2")) {
+      df_demogr[which(df_demogr$id == curr_id), ]$trials_excluded_2back <- df_demogr[which(df_demogr$id == curr_id), ]$trials_excluded_2back + trials_excluded
+    } 
+    # also add to counter for nr of excluded trials across conditions:
+    df_demogr[which(df_demogr$id == curr_id), ]$trials_excluded_all <- df_demogr[which(df_demogr$id == curr_id), ]$trials_excluded_all + trials_excluded
+  
+  }# END LOOP BlOCKS
+} # END LOOP PARTICIPANTS
+
+
+# get index of all values < - 2 or > 2 & actually exclude those trials from the dataframe
+excl_row_idx <- which(df_text_data_clean$tmp_transformed_RTs < -2 | df_text_data_clean$tmp_transformed_RTs > 2)
+
+# check how the corresponding untransformed RTs look like so we get a feeling for what's being excluded:
+#densityplot(df_text_data_clean[excl_row_idx, "duration"])
+
+# kick out the outliers:
+df_text_data_clean[excl_row_idx, "excl_trial"] <- TRUE
+df_text_data_clean <- subset(df_text_data_clean, excl_trial == FALSE)
+
+# drop column with the z-sqrt-POMS-transformed data, we don't need it anymore.  
+df_text_data_clean$tmp_transformed_RTs <- NULL
+
+
+# print some information on how many trials were excluded per recording location, condition, per age group and per condition x age group:
+
+# total number of excluded trials
+excl_trials      <- sum(df_demogr$trials_excluded_all)
+nr_trials_all    <- 300*2*3 * length(subset(df_demogr, excl == F)$trials_excluded_all)
+percent_excluded <- round(excl_trials/nr_trials_all * 100, digits = 3)
+message("In total, across recording sites, age groups & conditions, we excluded ", excl_trials, " trials. That's ", percent_excluded, "% of all trials from the main blocks.")
+
+# average across conditions, age groups and recording locations
+info_nr_excl_mean <- round(mean(subset(df_demogr, excl == F)$trials_excluded_all), digits = 3)
+info_nr_excl_sd   <- round(sd(subset(df_demogr, excl == F)$trials_excluded_all), digits = 3)
+message("On average, across recording sites, age groups & conditions, we excluded ", info_nr_excl_mean, " ± ", info_nr_excl_sd, " trials per participant")
+
+# old vs. young across conditions & recording locations:
+info_nr_excl_old       <- round(mean(subset(df_demogr, age >= 60 & excl == F)$trials_excluded_all), digits = 3)
+info_nr_excl_young     <- round(mean(subset(df_demogr, age <= 30 & excl == F)$trials_excluded_all), digits = 3)
+info_nr_excl_middle    <- round(mean(subset(df_demogr, age > 30 & age < 60 & excl == F)$trials_excluded_all), digits = 3)
+info_nr_excl_old_sd    <- round(sd(subset(df_demogr, age >= 60 & excl == F)$trials_excluded_all), digits = 3)
+info_nr_excl_young_sd  <- round(sd(subset(df_demogr, age <= 30 & excl == F)$trials_excluded_all), digits = 3)
+info_nr_excl_middle_sd <- round(sd(subset(df_demogr, age > 30 & age < 60 & excl == F)$trials_excluded_all), digits = 3)
+message("On average, across recording sites & conditions, we excluded ", info_nr_excl_old, " ± ", info_nr_excl_old_sd, " trials from older participants aged 60+ as opposed to ", info_nr_excl_middle, " ± ", info_nr_excl_middle_sd, " trials from middle-aged participants aged 31 - 59, and", info_nr_excl_young, " ± ", info_nr_excl_young_sd, " trials from younger participants aged 18 - 30")
+
+# BL vs. 1-back vs. 2-back across age groups & recording locations:
+info_nr_excl_BL    <- round(mean(subset(df_demogr, excl == F)$trials_excluded_BL), digits = 3)
+info_nr_excl_1back <- round(mean(subset(df_demogr, excl == F)$trials_excluded_1back), digits = 3)
+info_nr_excl_2back <- round(mean(subset(df_demogr, excl == F)$trials_excluded_2back), digits = 3)
+info_nr_excl_BL_sd    <- round(sd(subset(df_demogr, excl == F)$trials_excluded_BL), digits = 3)
+info_nr_excl_1back_sd <- round(sd(subset(df_demogr, excl == F)$trials_excluded_1back), digits = 3)
+info_nr_excl_2back_sd <- round(sd(subset(df_demogr, excl == F)$trials_excluded_2back), digits = 3)
+message("On average, across age groups & conditions, we excluded ", info_nr_excl_BL, " ± ", info_nr_excl_BL_sd, " trials from the BL condition as opposed to ", info_nr_excl_1back, " ± ", info_nr_excl_1back_sd, " trials from the 1-back and ", info_nr_excl_2back, " ± ", info_nr_excl_2back_sd, " trials from the 2-back task.")
+
+# lab vs. online across conditions & age groups:
+info_nr_excl_lab       <- round(mean(subset(df_demogr, recording_location == "lab" & excl == F)$trials_excluded_all), digits = 3)
+info_nr_excl_online    <- round(mean(subset(df_demogr, recording_location == "online" & excl == F)$trials_excluded_all), digits = 3)
+info_nr_excl_lab_sd    <- round(sd(subset(df_demogr, recording_location == "lab" & excl == F)$trials_excluded_all), digits = 3)
+info_nr_excl_online_sd <- round(sd(subset(df_demogr, recording_location == "online" & excl == F)$trials_excluded_all), digits = 3)
+message("On average, across age groups & conditions, we excluded ", info_nr_excl_lab, " ± ", info_nr_excl_lab_sd, " trials from lab participants as opposed to ", info_nr_excl_online, " ± ", info_nr_excl_online_sd, " trials from online participants.")
+
+
+```
+
+
+## log-transform reading times
+```{r log-transform reading times, echo = FALSE}
+
+# Idea: Ignore that we just transformed our reading times for outlier exclusion. 
+# We now take the raw reading times again and log-transform them.
+
+# use natural logarithm (base e) here:
+df_text_data_clean$reading_times_log <- log(df_text_data_clean$duration)
+# to reverse the log transformation and get the data back to the original scale (for easier interpretation of the results), 
+# use this: exp(log_transformed_data)
+
+# plot the distribution: 
+#densityplot(df_text_data_clean$reading_times_log)
+
+# make sure we update the values in the column previous_duration as well:
+df_text_data_clean$previous_reading_times_log <- log(as.numeric(df_text_data_clean$previous_duration))
+
+```
+
+
+# prepare data for group comparisons
+```{r clean up df a bit, echo = TRUE}
+
+# name df differently:
+df_clean <- df_text_data_clean
+
+################
+
+# rename "block_kind" column 
+names(df_clean)[which(names(df_clean) == "block_kind")] <- "cognitive_load"
+
+# recode values in cognitive_load column
+df_clean$cognitive_load <- ifelse(df_clean$cognitive_load == "Reading_BL_main", "BL",
+                                  ifelse(df_clean$cognitive_load == "1back_main", "1back",
+                                         ifelse(df_clean$cognitive_load == "2back_main", "2back",
+                                                df_clean$cognitive_load)))
+
+# turn the values into factors and set their order
+df_clean$cognitive_load <- factor(df_clean$cognitive_load,
+                                  levels = c("BL", "1back", "2back"))
+
+################
+
+# create new column "age_group" for the 2 age groups.
+# older = 60+
+# younger = < 60
+df_clean$age_group <- ifelse(df_clean$age < 40, "young",
+                             ifelse(df_clean$age >= 40 & df_clean$age < 60, "MA",
+                                  ifelse(df_clean$age >= 60, "old",
+                                                df_clean$age)))
+# turn them into factors and make sure the order is young -- old
+df_clean$age_group <- factor(df_clean$age_group,
+                             levels = c("young", "MA", "old"))
+
+################
+
+# now also create a column for the sample: divide lab - young, lab - middle_aged, lab - old and online:
+df_clean$sample <- ifelse(df_clean$age_group == "young" & df_clean$recording_location == "lab", "lab - young",
+                          ifelse(df_clean$age_group == "MA" & df_clean$recording_location == "lab", "lab - MA",
+                            ifelse(df_clean$age_group == "old" & df_clean$recording_location == "lab", "lab - old",
+                                 ifelse(df_clean$recording_location == "online", "online", NA))))
+
+# turn them into factors and make sure the order is online -- lab young -- lab old
+df_clean$sample <- factor(df_clean$sample,
+                          levels = c("online", "lab - young", "lab - MA", "lab - old"))
+
+
+################
+
+# create a column for comprehension question performance (% of correct answers)
+
+# merge df_clean and df_comprehension_Qs with the comprehension question scores based on "ID" and "text_nr"
+df_clean <- merge(df_clean, df_comprehension_Qs[, c("ID", "text_nr", "nr_correct")], by = c("ID", "text_nr"), all.x = TRUE)
+
+# divide all scores in nr_correct by 3 and multiply by 100 to get percentage of correct answers in each block:
+df_clean$nr_correct <- round(df_clean$nr_correct / 3 * 100, digits = 3)
+
+# rename the new column in df_clean accordingly
+colnames(df_clean)[colnames(df_clean) == "nr_correct"] <- "compr_Qs_percent_correct"
+
+
+################
+
+# Turn word frequencies into categories:
+# Can I maybe just use the 5% most frequent words and the 5% rarest words?
+# And everything in between (just for plotting rare vs high freq)?
+word_freqs <- word_freqs_df$word_frequency
+highest_word_freq <- range(word_freqs, na.rm = T)[2]
+
+# get lowest and highest 5% of words (ordered by frequency)
+lowest_high  <- min(head(sort(word_freqs, decreasing = TRUE), length(word_freqs) * 5/100))
+highest_rare <- max(head(sort(word_freqs, decreasing = FALSE), length(word_freqs) * 5/100))
+df_clean$word_frequency_cat <- cut(df_clean$word_frequency,
+                                   breaks = c(0, highest_rare, lowest_high, highest_word_freq),
+                                   labels = c("low", "medium", "high"))
+
+
+################
+
+# Turn word surprisal scores into categories:
+
+# Idea:
+# - make several plots - 1 for each surprisal score category
+# You can set the upper/lower percentage of surprisal scores we want to plot here
+# (e.g. plot only reading times for the highest vs. lowest 5 % of surprisal scores)
+upper_percent <- 5
+lower_percent <- 5
+# This is then used for all plots in the next sections.
+
+# We don't have the same texts (and therefore surprisal scores) in each condition, keep that in mind!
+
+# We do the following for each time scale.
+
+# For TS 1:
+surprisal_TS1 <- surprisal_df$surprisal_1
+highest_score_TS1 <- range(surprisal_TS1, na.rm = T)[2]
+# get lowest and highest n% of words (ordered by surprisal score)
+lowest_high_TS1 <- min(head(sort(surprisal_TS1, decreasing = TRUE), length(surprisal_TS1) * upper_percent/100))
+highest_rare_TS1 <- max(head(sort(surprisal_TS1, decreasing = FALSE), length(surprisal_TS1) * lower_percent/100))
+df_clean$surprisal_TS1_cat <- cut(df_clean$surprisal_1,
+                                  breaks = c(0, highest_rare_TS1, lowest_high_TS1, highest_score_TS1),
+                                  labels = c("low", "medium", "high"))
+# For TS 4:
+surprisal_TS4 <- surprisal_df$surprisal_4
+highest_score_TS4 <- range(surprisal_TS4, na.rm = T)[2]
+# get lowest and highest n% of words (ordered by surprisal score)
+lowest_high_TS4 <- min(head(sort(surprisal_TS4, decreasing = TRUE), length(surprisal_TS4) * upper_percent/100))
+highest_rare_TS4 <- max(head(sort(surprisal_TS4, decreasing = FALSE), length(surprisal_TS4) * lower_percent/100))
+df_clean$surprisal_TS4_cat <- cut(df_clean$surprisal_4,
+                                  breaks = c(0, highest_rare_TS4, lowest_high_TS4, highest_score_TS4),
+                                  labels = c("low", "medium", "high"))
+# For TS 12:
+surprisal_TS12 <- surprisal_df$surprisal_12
+highest_score_TS12 <- range(surprisal_TS12, na.rm = T)[2]
+# get lowest and highest n% of words (ordered by surprisal score)
+lowest_high_TS12 <- min(head(sort(surprisal_TS12, decreasing = TRUE), length(surprisal_TS12) * upper_percent/100))
+highest_rare_TS12 <- max(head(sort(surprisal_TS12, decreasing = FALSE), length(surprisal_TS12) * lower_percent/100))
+df_clean$surprisal_TS12_cat <- cut(df_clean$surprisal_12,
+                                   breaks = c(0, highest_rare_TS12, lowest_high_TS12, highest_score_TS12),
+                                   labels = c("low", "medium", "high"))
+# For TS 60:
+surprisal_TS60 <- surprisal_df$surprisal_60
+highest_score_TS60 <- range(surprisal_TS60, na.rm = T)[2]
+# get lowest and highest n% of words (ordered by surprisal score)
+lowest_high_TS60 <- min(head(sort(surprisal_TS60, decreasing = TRUE), length(surprisal_TS60) * upper_percent/100))
+highest_rare_TS60 <- max(head(sort(surprisal_TS60, decreasing = FALSE), length(surprisal_TS60) * lower_percent/100))
+df_clean$surprisal_TS60_cat <- cut(df_clean$surprisal_60,
+                                  breaks = c(0, highest_rare_TS60, lowest_high_TS60, highest_score_TS60),
+                                  labels = c("low", "medium", "high"))
+
+```
+
+## save preprocessed data in RData file in folder Analysis
+```{r save preprocessed data, echo = FALSE}
+
+# save df
+save(df_clean, file = here::here("Analysis/RData/df_clean_all_subjects.RData"))
+
+```
+
+
+# Plots
+
+# Plots demographics
+```{r plot data, message=FALSE, warning=FALSE}
+
+# only get data of participants we included in the analyses:
+plot_df <- subset(df_demogr, excl == F)
+plot_df$age <- as.numeric(plot_df$age)
+
+# Print info on demographics:
+percent_female <- round(length(which(plot_df$gender == "f")) / length(plot_df$gender) * 100, digits = 3)
+percent_male <- round(length(which(plot_df$gender == "m")) / length(plot_df$gender) * 100, digits = 3)
+percent_nonbinary <- round(length(which(plot_df$gender == "d")) / length(plot_df$gender) * 100, digits = 3)
+
+message(paste("Demographics: \n- Total N = ", length(plot_df$gender), 
+              ", N online = ", length(which(plot_df$recording_location == "online")), 
+              ", N lab = ", length(which(plot_df$recording_location == "lab")), 
+              ",\n        N = 3 additional datasets were excluded & are not taken into account here.",
+              "\n- Age distribution: ", round(mean(plot_df$age), digits = 3), "±",
+                                         round(sd(plot_df$age), digits = 3), " years",
+              " \n- Gender distribution: ", percent_female, "% female: ",  
+                                            percent_male, ", % male, and ", 
+                                            percent_nonbinary, "% non-binary participants 
+              across both samples", sep = ""))
+
+
+# Plot age distribution (by recording location):
+plot_age <- ggplot(data = plot_df, 
+                   aes(x = age, group = recording_location)) +
+                geom_density(aes(y = after_stat(count),
+                                 fill = recording_location),
+                             adjust = 0.45, 
+                             alpha = 0.5) + 
+                geom_rug( alpha = 0.2) +
+                scale_x_continuous(breaks = scales::pretty_breaks(n = 10), 
+                                   limits = c(0, 100)) +
+                scale_fill_manual(values = palet_lab_online) +
+                labs(y = "# Participants", 
+                     x = "Age") +
+                apatheme + # remove grey bg and grid lines
+                theme(legend.title = element_blank()) + 
+                # Hide parts of the density plot between white rectangles where we don't have data.
+                # I don't like how they taper off at the edges.
+                annotate("rect", 
+                         xmin = 0, xmax = min(plot_df$age)-1, ymin = 0.01, ymax = 5,
+                         alpha = 1, fill = "white") + 
+                annotate("rect", 
+                         xmin = max(plot_df$age)+1, xmax = 100, ymin = 0.01, ymax = 5,
+                         alpha = 1, fill = "white")
+plot_age
+# save plot:
+ggsave(plot_age, file = here::here(paste0("Plots/age_distr_", today, ".pdf")), width = 5, height = 5)
+
+
+```
+
+
+## Plot RTs by Condition, Location & Age (only dual-task blocks)
+```{r plot RT by Condition & Age & Location, message = FALSE, warning = FALSE}
+
+# ---- Plot RTs by Age Group & Condition ----
+plot_df <- subset(df_clean, reaction == F) # exclude trials where you had a reaction
+plot_df <- plot_df %>% 
+                    group_by(recording_location, age, ID, cognitive_load) %>% 
+                    summarise(mean_rt = mean(duration)) %>% 
+                          rename(Location = recording_location, 
+                                 Age = age, 
+                                 Subject = ID,
+                                 Condition = cognitive_load,
+                                 Reaction_time = mean_rt)
+plot_df$Condition <- factor(plot_df$Condition, levels = c("BL", "1back", "2back"))
+
+# plot RTs across recording locations:
+rt_age_log <- ggplot(plot_df, aes(x = Age, y = Reaction_time, color = Condition))+
+              geom_point2(alpha = 0.5, size = 1.8) +
+              geom_smooth(method = lm, aes(fill = Condition), na.rm = T) +
+              scale_color_manual(values = palet_load) +
+              scale_fill_manual(values = palet_load) +
+              scale_x_continuous(breaks = scales::pretty_breaks(n = 7)) +
+              #coord_cartesian(ylim = c(5, 8.4)) +
+              labs(y = "log Reading Time") +
+              coord_cartesian(ylim = c(NA, 5000)) +
+              #                xlim = c(0, 90)) +
+              # make y-axis log-transformed (with log base e as in log() function)
+              scale_y_log(breaks=c(0, 250, 500, 1000, 2000, 4000), 
+                          labels=c("0","250", "500", "1000", "2000", "4000")) +
+              apatheme +
+              theme(legend.position=("bottom"))
+
+ggsave(rt_age_log, file = here::here(paste0("Plots/RT_age_cond_log_all_", today, ".pdf")), 
+       width = 6, height = 5)  
+
+# plot divided by recording location:
+rt_age_log_location <- ggplot(plot_df,  
+                            aes(x = Age, y = Reaction_time, color = Condition))+
+              geom_point2(alpha = 0.5, size = 1.8) +
+              geom_smooth(method = lm, aes(fill = Condition), na.rm = T) +
+              scale_color_manual(values = palet_load) +
+              scale_fill_manual(values = palet_load) +
+              scale_x_continuous(breaks = scales::pretty_breaks(n = 7)) +
+              labs(y = "log Reading Time") +
+              coord_cartesian(ylim = c(NA, 5000)) +
+              # make y-axis log-transformed (with log base e as in log() function)
+              scale_y_log(breaks=c(0, 250, 500, 1000, 2000, 4000), 
+                          labels=c("0","250", "500", "1000", "2000", "4000")) +
+              apatheme +
+              facet_wrap(~ Location)
+              theme(legend.position=("bottom"))
+ggsave(rt_age_log_location, 
+       file = here::here(paste0("Plots/RT_age_cond_log_location_", today, ".pdf")), 
+       width = 8, height = 5)  
+```
+
+
+## Plot RTs by Surprisal TS & Condition (only dual-task blocks; across recording locations)
+```{r plot RTs by Surprisal TS & Condition, message = FALSE, warning = FALSE}
+
+#---- Plot RTs by Surprisal TS and by Surprisal x Condition ----
+plot_surprisal_df <- subset(df_clean, reaction == F) # exclude trials where you had a reaction
+plot_surprisal_df <- pivot_longer(plot_surprisal_df, 
+                                  cols = c("surprisal_1", "surprisal_4",
+                                           "surprisal_12", "surprisal_60"),  
+                                  names_to = "surprisal_ts", 
+                                  values_to = "surprisal")
+plot_surprisal_df$surprisal <- round(plot_surprisal_df$surprisal, digits = 0)
+# Now group by ID, cognitive_load & time scale
+plot_surprisal_df <- plot_surprisal_df %>% 
+                    group_by(ID, cognitive_load, surprisal_ts, surprisal) %>% 
+                    summarise(mean_rt = mean(duration)) %>% 
+                            rename(Surprisal_TS = surprisal_ts, 
+                                   Subject = ID,
+                                   Surprisal = surprisal,
+                                   Condition = cognitive_load,
+                                   Reaction_time = mean_rt)
+
+# change order of n-back levels:
+plot_df$Condition <- factor(plot_df$Condition, levels = c("BL", "1back", "2back"))
+
+# loop time scales, build a plot for each of them:
+for (curr_ts in unique(plot_surprisal_df$Surprisal_TS)){
+  
+  # plot durations with log-transformed axes
+  plot_ts_log <- ggplot(subset(plot_surprisal_df, Surprisal_TS == curr_ts &
+                                              !is.na(Surprisal) & Reaction_time), # get data for current TS
+                            aes(x = Surprisal, 
+                                y = Reaction_time, 
+                                fill = Condition, 
+                                color = Condition), 
+                            width = 4, height = 7)+
+                      geom_smooth(method = lm, aes(fill = Condition), na.rm = T) +
+                      scale_color_manual(values = palet_load) +
+                      scale_fill_manual(values = palet_load) +
+                      scale_x_continuous(breaks = scales::pretty_breaks(n = 5)) +
+                      facet_wrap(~ Surprisal_TS) +
+                      apatheme +
+                      coord_cartesian(ylim = c(NA, 1300),
+                                      xlim = c(0, 60)) +
+                      # make y-axis log-transformed (with log base e as in log() function)
+                      scale_y_log(breaks=c(500, 750, 1000, 1250), 
+                                  labels=c("500", "750", "1000", "1250")) +
+                      theme(legend.position = "none")
+            
+  # save single plots:
+  #ggsave(plot_ts_log, 
+  #       file = here::here(paste0("Plots/RT_cond_", curr_ts,"_log_", today, ".pdf")), 
+  #       width = 5, height = 8)  
+  
+  # Add y-axis label only for the first plot
+  if (curr_ts == unique(plot_surprisal_df$Surprisal_TS)[1]) {
+    plot_ts_log <- plot_ts_log + labs(y = "Reading Time") 
+  } else {
+    plot_ts_log <- plot_ts_log + theme(axis.text.y = element_blank()) + labs(y = element_blank()) 
+  }
+
+  # assign a unique variable name for the plot: 
+  assign(paste0("plot_ts_log", curr_ts), plot_ts_log)
+  
+  
+  # Do the same but use normal (untransformed) y-axes:
+  plot_ts <- ggplot(subset(plot_surprisal_df, Surprisal_TS == curr_ts &
+                                              !is.na(Surprisal)), # get data for current TS
+                            aes(x = Surprisal, 
+                                y = Reaction_time, 
+                                fill = Condition, 
+                                color = Condition), 
+                            width = 4, height = 7)+
+                      # way too many data points for a scatter plot:
+                      #geom_point(aes(color = Condition, fill = Condition), 
+                      #       position = position_jitter(width = 0.04, height = 0),
+                      #       alpha = 0.1,
+                      #       size = 1) +
+                      geom_smooth(method = lm, aes(fill = Condition), na.rm = T) +
+                      scale_color_manual(values = palet_load) +
+                      scale_fill_manual(values = palet_load) +
+                      scale_x_continuous(breaks = scales::pretty_breaks(n = 5)) +
+                      facet_wrap(~ Surprisal_TS) +
+                      apatheme +
+                      coord_cartesian(ylim = c(0, 1500),
+                                      xlim = c(0, 60)) +
+                      theme(legend.position = "none")
+              
+  # save single plots:
+  #ggsave(plot_ts, 
+  #       file = here::here(paste0("Plots/RT_cond_", curr_ts,"_", today, ".pdf")), 
+  #       width = 5, height = 8)  
+  
+  # Add y-axis label only for the first plot
+  if (curr_ts == unique(plot_surprisal_df$Surprisal_TS)[1]) {
+    plot_ts <- plot_ts + labs(y = "Reading Time") 
+  } else {
+    plot_ts <- plot_ts + theme(axis.text.y = element_blank()) + labs(y = element_blank()) 
+  }
+
+  # assign a unique variable name for the plot: 
+  assign(paste0("plot_ts_", curr_ts), plot_ts)
+  
+}
+
+# put all 4 plots into 1 plot with 4 panels:
+plot_ts_cond <- cowplot::plot_grid(plot_ts_surprisal_1, plot_ts_surprisal_4, 
+                                   plot_ts_surprisal_12, plot_ts_surprisal_60, 
+                                   ncol = 4, 
+                                   # make panel 1 27% wider than the rest
+                                   # because it contains the y-axis labels:
+                                   rel_widths = c(1.27,1,1,1)) 
+plot_ts_cond_log <- cowplot::plot_grid(plot_ts_logsurprisal_1, plot_ts_logsurprisal_4, 
+                                   plot_ts_logsurprisal_12, plot_ts_logsurprisal_60, 
+                                   ncol = 4, 
+                                   # make panel 1 37% wider than the rest
+                                   # because it contains the y-axis labels:
+                                   rel_widths = c(1.37,1,1,1)) 
+# save plots:
+cowplot::save_plot(plot_ts_cond, 
+                   file = here::here(paste0("Plots/RT_surprisal_cond_", today, ".pdf")))
+cowplot::save_plot(plot_ts_cond_log, 
+                   file = here::here(paste0("Plots/RT_surprisal_cond_log_", today, ".pdf")))
+
+```
+
+
+## Plot d-primes by Condition, Location & Age
+Hint: We didn't have an n-back task in the baseline condition, so we can only compute & plot them for the 1-back and 2-back dual- and single-task blocks.
+```{r plot d-primes by condition, age and location, echo = TRUE}
+
+# get data, exclude BL because we didn't have an n-back task there
+plot_df <- subset(df_clean, cognitive_load != "BL" )
+
+# get d-prime data:
+plot_df <- subset(df_text_data, block_kind == "1back_single_main" |
+                                block_kind == "2back_single_main" |
+                                block_kind == "1back_main" |
+                                block_kind == "2back_main")
+
+# aggregate by recording_location, age group, ID and cognitive load condition
+plot_df <- setNames(aggregate(plot_df$dprime,
+                              by = list(plot_df$ID, plot_df$age, 
+                                        plot_df$recording_location, plot_df$block_kind),
+                              FUN = mean),
+                    c("ID", "Age", "Location", "Condition", "Mean_dprime"))
+
+
+
+# plot d-primes in dual- & single-tasks across recording locations
+plot_dprimes <- ggplot(plot_df, aes(x = Age, 
+                                    y = Mean_dprime, 
+                               fill = Condition,
+                               color = Condition), 
+                            width = 4, height = 7) +
+                      #geom_point(aes(color = Condition, fill = Condition), 
+                      #       position = position_jitter(width = 0.04, height = 0),
+                      #       alpha = 0.3,
+                      #       shape = 19,
+                      #       size = 1) +
+                      geom_smooth(method = lm, aes(fill = Condition, color = Condition), 
+                                  na.rm = T, alpha = 0.6) +
+                      scale_color_manual(values = palet_dprimes_lines) +
+                      scale_fill_manual(values = palet_dprimes) +
+                      scale_x_continuous(breaks = scales::pretty_breaks(n = 10)) +
+                      apatheme +
+                      theme(legend.position=("bottom")) +
+                      coord_cartesian(ylim = c(0, 5))
+ggsave(plot_dprimes, file = here::here(paste0("Plots/dprimes_", today, ".pdf")), 
+       device = "pdf", width = 4, height = 4)
+
+# plot d-primes in dual- & single-tasks, divided by location
+plot_dprimes_location <- ggplot(plot_df, aes(x = Age, 
+                                             y = Mean_dprime, 
+                                             fill = Condition,
+                                             color = Condition), 
+                                width = 4, height = 7) +
+                      #geom_point(aes(color = Condition, fill = Condition), 
+                      #           position = position_jitter(width = 0.04, height = 0),
+                      #           alpha = 0.3,
+                      #           shape = 19,
+                      #           size = 1) +
+                      geom_smooth(method = lm, 
+                                  aes(fill = Condition, color = Condition), 
+                                  na.rm = T, 
+                                  alpha = 0.6) +
+                      scale_color_manual(values = palet_dprimes_lines) +
+                      scale_fill_manual(values = palet_dprimes) +
+                      scale_x_continuous(breaks = scales::pretty_breaks(n = 10)) +
+                      apatheme +
+                      facet_wrap(~ Location) +
+                      theme(legend.position=("bottom")) +
+                      coord_cartesian(ylim = c(0, 5))
+
+ggsave(plot_dprimes_location, file = here::here(paste0("Plots/dprimes_location_", today, ".pdf")), 
+       device = "pdf", width = 8, height = 4)
+
+  
+```
+
+## plot comprehension question performance
+--> once across recording locations and once divided by sample
+```{r plot comprehension question performance by condition, age and location, echo = FALSE}
+
+# Problem here: I excluded all blocks with comprehension questions scores of 0, 
+# so if I plot only the cleaned data, the results will look different.
+# --> To do: Plot raw data from df_comprehension_Qs here
+# which(df_comprehension_Qs$nr_correct == 0)
+
+plot_df <- df_comprehension_Qs
+
+# quickly rename "block_kind" column:
+names(plot_df)[which(names(plot_df) == "block_kind")] <- "cognitive_load"
+
+# exclude training:
+plot_df <- subset(plot_df, cognitive_load != "reading_baseline_training")
+
+# recode & order levels of cognitive_load:
+plot_df$cognitive_load <- ifelse(plot_df$cognitive_load == "Reading_BL_main", "BL",
+                                          ifelse(plot_df$cognitive_load == "1back_main", "1back",
+                                              ifelse(plot_df$cognitive_load == "2back_main", "2back",
+                                                     plot_df$cognitive_load)))
+plot_df$cognitive_load <- factor(plot_df$cognitive_load,
+                                             levels = c("BL", "1back", "2back"))
+
+# aggregate by recording_location, age, ID and cognitive load condition
+plot_df <- setNames(aggregate(plot_df$nr_correct,
+                              by = list(plot_df$ID, plot_df$age, 
+                                        plot_df$recording_location, plot_df$cognitive_load),
+                              FUN = mean),
+                    c("ID", "Age", "Location", "Condition", "Mean_percent_correct"))
+
+# divide nr_correct column values by 3 to get % correct instead of # correct
+plot_df$Mean_percent_correct <- plot_df$Mean_percent_correct / 3
+
+# plot % correct by condition & age
+plot_comprehensionQs <- ggplot(plot_df,
+                               aes(x = Age, 
+                                   y = Mean_percent_correct, 
+                                   fill = Condition, 
+                                   color = Condition), 
+                                   width = 4, height = 7) +
+                        # not really informative here:
+                        #geom_point(aes(color = Condition, fill = Condition), 
+                        #     alpha = 0.3,
+                        #     shape = 19,
+                        #     size = 1) +
+                         geom_smooth(method = lm, aes(fill = Condition), na.rm = T) +
+                         scale_color_manual(values = palet_load) +
+                         scale_fill_manual(values = palet_load) +
+                         scale_x_continuous(breaks = scales::pretty_breaks(n = 10)) +
+                         apatheme +
+                         coord_cartesian(ylim = c(0, 1),
+                                         xlim = c(18, 85)) +
+                         theme(legend.position = "bottom")
+            
+ggsave(plot_comprehensionQs, 
+       file = here::here(paste0("Plots/compr_Qs_", today, ".pdf")), 
+       device = "pdf", width = 4, height = 4)
+
+
+# plot % correct by condition. location & age
+plot_comprehensionQs_location <- ggplot(plot_df,
+                               aes(x = Age, 
+                                   y = Mean_percent_correct, 
+                                   fill = Condition, 
+                                   color = Condition), 
+                                   width = 4, height = 7) +
+                        # not really informative here:
+                        #geom_point(aes(color = Condition, fill = Condition), 
+                        #     alpha = 0.3,
+                        #     shape = 19,
+                        #     size = 1) +
+                         geom_smooth(method = lm, aes(fill = Condition), na.rm = T) +
+                         scale_color_manual(values = palet_load) +
+                         scale_fill_manual(values = palet_load) +
+                         scale_x_continuous(breaks = scales::pretty_breaks(n = 10)) +
+                         facet_wrap(~ Location) +
+                         apatheme +
+                         coord_cartesian(ylim = c(0, 1),
+                                         xlim = c(18, 85)) +
+                         theme(legend.position = "bottom")
+            
+ggsave(plot_comprehensionQs_location, 
+       file = here::here(paste0("Plots/compr_Qs_location_", today, ".pdf")), 
+       device = "pdf", width = 8, height = 4)
+
+
+```
+
+# Additional plots:
+Plot Reading Time by Task (1- and 2-back Dual- and Single-Tasks)
+--> once divided by recording location and once across recording locations
+```{r plot RTs by task and age, message = FALSE, warning = FALSE}
+
+# get d-prime data:
+plot_df <- subset(df_text_data, block_kind == "1back_single_main" |
+                                block_kind == "2back_single_main" |
+                                block_kind == "1back_main" |
+                                block_kind == "2back_main")
+
+# aggregate by recording_location, age group, ID and cognitive load condition
+plot_df <- setNames(aggregate(plot_df$duration,
+                              by = list(plot_df$ID, plot_df$age, 
+                                        plot_df$recording_location, plot_df$block_kind),
+                              FUN = mean),
+                    c("ID", "Age", "Location", "Condition", "Mean_RT"))
+
+# plot RTs in dual- & single-tasks -- divide by recording location
+plot_RT_by_task_location <- ggplot(plot_df, aes(x = Age, 
+                                                y = Mean_RT, 
+                                                fill = Condition,
+                                                color = Condition), 
+                                             width = 4, height = 7) +
+                              # not really helpful here:
+                              #geom_point(aes(color = Condition, fill = Condition), 
+                              #       position = position_jitter(width = 0.04, height = 0),
+                              #       alpha = 0.3,
+                              #       shape = 19,
+                              #       size = 1) +
+                              geom_smooth(method = lm, 
+                                          aes(fill = Condition, color = Condition), 
+                                          na.rm = T, alpha = 0.6) +
+                              scale_color_manual(values = palet_dprimes_lines) +
+                              scale_fill_manual(values = palet_dprimes) +
+                              scale_x_continuous(breaks = scales::pretty_breaks(n = 10)) +
+                              facet_wrap(~ Location) +
+                              apatheme +
+                              coord_cartesian(ylim = c(480, 2700),
+                                              xlim = c(18, 85)) +
+                              # make y-axis log-transformed (with log base e as in log() function)
+                              scale_y_log(breaks=c(500, 1000, 1500, 2000, 2500, 3000), 
+                                          labels=c("500", "1000", "1500", "2000", "2500", "3000")) +
+                              theme(legend.position = "bottom")
+ggsave(plot_RT_by_task_location, file = here::here(paste0("Plots/RT_by_task_location_", today, ".pdf")), 
+       device = "pdf", width = 8, height = 4)
+
+
+# Do the same again, but don't split by recording location: 
+plot_RT_by_task <- ggplot(plot_df, aes(x = Age, 
+                                       y = Mean_RT, 
+                                       fill = Condition,
+                                       color = Condition), 
+                                       width = 4, height = 7) +
+                   # not really helpful here:
+                   #geom_point(aes(color = Condition, fill = Condition), 
+                   #       position = position_jitter(width = 0.04, height = 0),
+                   #       alpha = 0.3,
+                   #       shape = 19,
+                   #       size = 1) +
+                   geom_smooth(method = lm, 
+                               aes(fill = Condition, color = Condition), 
+                               na.rm = T, alpha = 0.6) +
+                   scale_color_manual(values = palet_dprimes_lines) +
+                   scale_fill_manual(values = palet_dprimes) +
+                   scale_x_continuous(breaks = scales::pretty_breaks(n = 10)) +
+                   apatheme +
+                   coord_cartesian(ylim = c(480, 2700),
+                                   xlim = c(18, 85)) +
+                   # make y-axis log-transformed (with log base e as in log() function)
+                   scale_y_log(breaks = c(500, 1000, 1500, 2000, 2500, 3000), 
+                               labels = c("500", "1000", "1500", "2000", "2500", "3000")) +
+                   theme(legend.position = "bottom")
+plot_RT_by_task
+ggsave(plot_RT_by_task, file = here::here(paste0("Plots/RT_by_task_", today, ".pdf")), 
+       device = "pdf", width = 4, height = 4)
+
+
+```
+
+
+
+# Stats
+
+## prepare data for LMMs
+```{r plot d-primes, echo = FALSE}
+
+######### Linear mixed models #########
+
+# shrink the df a bit: exclude rows that don't have surprisal scores on all time scales
+lmm_df <- subset(df_clean, !is.na(surprisal_60))
+
+# create a Simple Coding scheme for the variable cognitive_load
+# https://stats.oarc.ucla.edu/r/library/r-library-contrast-coding-systems-for-categorical-variables/
+# creating the contrast matrix manually by modifying the dummy coding scheme
+c <- contr.treatment(3) # create dummy coding scheme
+my.coding <- matrix(rep(1/3, 6), ncol = 2) # make matrix with only 1/3 values
+# change values in dummy coding scheme to either -1/3 or 2/6 by
+# subtracting 1/3 from 0s and 1s in the dummy coding scheme
+my.simple <- c-my.coding
+# show new coding scheme
+#my.simple
+
+# Explanation for future Merle on why we don't 
+# just use the dummy coding scheme: 
+# Assume you assigned a coding scheme to variable a. 
+# For interpreting main effects of variables a and b, it doesn't make a 
+# difference if you use a dummy or simple coding scheme.
+# But when you include an interaction of variables a and b, the interpretation of the 
+# main effect a changes depending on the coding scheme:
+# With the simple coding scheme, the meaning of the main effect a is as usual, 
+# but when you use the dummy coding scheme, suddenly the main effect of 
+# variable a is interpreted as the change is variable b = 0. 
+# Long story short: It's easiest to just always use simple coding.
+
+
+#assign the new coding scheme to lmm_df$cognitive_load
+contrasts(lmm_df$cognitive_load) <- my.simple
+
+# typecast "reaction" to factor because sjplot complains about logicals
+# --> I tried just typecasting it to "TRUE" and "FALSE" as factor strings, but for some reason 
+# it got converted to logicals again. 
+# So I recoded the factor levels as 1 and -1 (aka factor ints) and hope it doesn't get converted again 
+lmm_df$reaction <- as.factor(lmm_df$reaction)
+#lmm_df$reaction <- as.factor(ifelse(lmm_df$reaction == "TRUE", 1, -1)) # 1 = TRUE and -1 = FALSE
+
+# typecast word_length_single, block_nr, trial_nr & age to numeric, and ID & text_nr to factor
+lmm_df$word_length_single <- as.numeric(lmm_df$word_length_single)
+lmm_df$trial_nr <- as.numeric(lmm_df$trial_nr)
+lmm_df$block_nr <- as.numeric(lmm_df$block_nr)
+lmm_df$age <- as.numeric(lmm_df$age)
+
+# ----------- Fix missing d-prime data in BL block -----------
+# Problem: I can't include a predictor that doesn't have any data in one of the groups. 
+# But I don't have any d-primes for the BL condition because there was no n-back 
+# in those blocks, so I have 2 options: Invent data for the BL block & be careful with interpretation, or exclude the d-primes entirely from my model, which would be sad because I want to control for speed-accuracy tradeoff effects. 
+
+# Idea: If d-prime is high, n-back accuracy is high and reading times should be slower.
+# So in the BL condition with super fast reading, d-primes should be low if there was an imaginary n-back task in those blocks. 
+# Idea: In order not to destroy the direction of the effect, use participant-level mean of all d-primes a constant in all BL blocks.
+# We basically fit a regression line for the effect, which will go through the mean in any way, right? So use the mean as the constant for BL.
+
+# try using participant-level mean of d-primes in 1-back and 2-back blocks as constant
+
+# loop participants in lmm_df, get mean d-prime and assign it as constant: 
+for (curr_id in unique(lmm_df$ID)){
+  
+  # get data of current participant
+  curr_participant <- subset(lmm_df, ID == curr_id)
+  
+  # get mean d-prime from all blocks where we don't have NAs (which are the 1-back and 2-back blocks)
+  mean_dprime <- mean(curr_participant$dprime, na.rm = T)
+  
+  # assign mean d-prime as constant in the BL blocks:
+  lmm_df[which(lmm_df$ID == curr_id & lmm_df$cognitive_load == "BL"), ]$dprime <- mean_dprime
+}
+
+# check if we still have NAs somewhere:
+# which(is.na(subset(lmm_df, cognitive_load == "BL")$dprime))
+
+
+# ----------- prepare columns to check for speed accuracy tradeoff effects -----------
+
+# Further ideas concerning speed accuracy tradeoffs:
+
+# Single participants could perform worse in the n-back than others, so we should have 1 mean d-prime value for each participant.
+# Likewise it is possible that participants perform differently in different blocks, 
+# e.g. they put more effort into doing the n-back in block 1 and then not so much anymore in block 2. So we also need d-primes on block-level.
+# To get rid of the participant-level effect, we need to subtract the mean from each block-wise d-prime though. 
+# So what we're doing now is creating 2 new columns with d-prime values: 
+# 1. a mean d-prime for each participant
+# 2. the deviation of each d-prime from the participant's mean for each block
+
+# 1. calculate mean d-prime for each participant
+#lmm_df$dprime_mean <- ave(lmm_df$dprime, lmm_df$ID, FUN = function(x) mean(x, na.rm = TRUE))
+
+# 2. subtract participant mean from each block's original d-prime
+#lmm_df$dprime_diff <- lmm_df$dprime - lmm_df$dprime_mean
+
+
+# Do the same for the comprehension questions:
+
+# 1. calculate mean %correct score for each participant
+lmm_df$compr_Qs_percent_correct_mean <- ave(lmm_df$compr_Qs_percent_correct, lmm_df$ID, FUN = function(x) mean(x, na.rm = TRUE))
+
+# 2. subtract participant mean from each block's original %correct score
+lmm_df$compr_Qs_percent_correct_diff <- lmm_df$compr_Qs_percent_correct - lmm_df$compr_Qs_percent_correct_mean
+
+
+# ----------- z-transform continuous variables for mixed models -----------
+
+# Define columns you want to z-transform:
+
+# z-transform: now you can compare the estimates in the lmm output
+# only center, not z-transform: units stay the same, makes the interpretation of estimates easier, but you can't compare the estimates anymore.
+#--> you could run the models twice, once with z-transformed values (for comparison of effects), once with centered values (for interpretation of single effects)
+freq_length_cols <- c("word_frequency", "word_length_single", 
+                      "dprime", #"dprime_mean", "dprime_diff", 
+                      "previous_reading_times_log",
+                      "compr_Qs_percent_correct", "compr_Qs_percent_correct_mean", 
+                      "compr_Qs_percent_correct_diff", 
+                      "mean_dprime_singletasks",
+                      "age")
+surprisal_cols   <- c(paste0("surprisal_", c(1, 4, 12, 60)), paste0("previous_surprisal_", c(1, 4, 12, 60))) # columns: surprisal_X with X being each of the TSs
+
+# Apply scale function to each column
+# --> set center to TRUE to subtract the sample mean from each value, set scale to TRUE to divide by standard deviation
+# --> make sure to convert the data to vector format before adding them as a new column
+lmm_df[paste0(freq_length_cols, "_z")] <- lapply(lmm_df[freq_length_cols], 
+                                                 function(x) as.vector(scale(x, 
+                                                                             center = TRUE, 
+                                                                             scale = TRUE)))
+lmm_df[paste0(surprisal_cols, "_z")] <- lapply(lmm_df[surprisal_cols], 
+                                               function(x) as.vector(scale(x, 
+                                                                           center = TRUE, 
+                                                                           scale = TRUE)))
+
+lmm_df[paste0(freq_length_cols, "_centered")] <- lapply(lmm_df[freq_length_cols], 
+                                                        function(x) as.vector(scale(x, 
+                                                                                    center = TRUE, 
+                                                                                    scale = FALSE)))
+lmm_df[paste0(surprisal_cols, "_centered")] <- lapply(lmm_df[surprisal_cols], 
+                                                      function(x) as.vector(scale(x, 
+                                                                                  center = TRUE, 
+                                                                                  scale = FALSE)))
+
+# ----------- scramble all surprisal scores & add as new columns: -----------
+
+# scramble all timescales:
+# loop timescales
+
+for (i in c(1, 4, 12, 60)) {
+  # set random seed to make sure they are all shuffled in a different way
+  # --> I usually use 42 as a seed, but I need different seeds for the different Time Scales or 
+  # they'll be shuffled in exactly the same way. So I'll just add 1 to my beloved 42 here.
+  set.seed(42+i)
+  # shuffle the current timescale x & create new column called surprisal_x_z_scrambled:
+  lmm_df[[paste0("surprisal_", i, "_z_scrambled")]] <- sample(lmm_df[[paste0("surprisal_", i, "_z")]])
+  
+  # shuffle centered surprisal scores in the same way:
+  set.seed(42+i)
+  lmm_df[[paste0("surprisal_", i, "_centered_scrambled")]] <- sample(lmm_df[[paste0("surprisal_", i, "_centered")]])
+  
+  # Just a sanity check:
+  # Check correlation between scrambled & unscrambled values so 
+  # it's not in the same / almost the same order as it was before by accident:
+  #corr_after_scrambling <- cor(lmm_df[[paste0("surprisal_", i, "_z_scrambled")]], as.vector(lmm_df[[paste0("surprisal_", i, "_z")]]), 
+  #                             method = "spearman")
+  #if (round(corr_after_scrambling[1], digits = 1) == 0){
+  #  print("Sanity check 1: surprisal score vectors are different after shuffling")
+  #} else { 
+  #  print("Sanity check 1: surprisal score vectors are still similar after shuffling")
+  #}
+  
+  
+  # use different seed than before so we could put them into the same model if we wanted to. Just add 1 to the seed we used before: 
+  set.seed(42+i+1)
+  lmm_df[[paste0("previous_surprisal_", i, "_z_scrambled")]] <- sample(lmm_df[[paste0("previous_surprisal_", i, "_z")]])
+  
+  # use the same seed for previous_surprisal
+  set.seed(42+i+1)
+  lmm_df[[paste0("previous_surprisal_", i, "_centered_scrambled")]] <- sample(lmm_df[[paste0("previous_surprisal_", i, "_centered")]])
+  
+  
+  # Sanity check part 2: check correlation again
+  #corr_after_scrambling <- cor(na.omit(lmm_df[[paste0("previous_surprisal_", i, "_z_scrambled")]]),  na.omit(as.vector(lmm_df[[paste0("previous_surprisal_", i, "_z")]])), 
+  #                             method = "spearman")
+  #if (round(corr_after_scrambling[1], digits = 1) == 0){
+  #  print("Sanity check 2: surprisal score vectors are different after shuffling")
+  #} else { 
+  #  print("Sanity check 2: surprisal score vectors are still similar after shuffling")
+  #}
+}
+
+
+```
+
+
+## save data
+```{r save lmm_df, echo = FALSE}
+
+# save df
+save(lmm_df, file = here::here("Analysis/RData/lmm_df_all_subjects.RData"))
+
+# also save dfs with demographical data and comprehension question data:
+save(df_demogr, file = here::here("Analysis/RData/df_demogr.RData"))
+save(df_comprehension_Qs, file = here::here("Analysis/RData/df_comprehension_Qs.RData"))
+
+
+```
+
+
+# Set up model for each time scale and run
+```{r}
+#---- Time Scale 1 ----
+m_RT_ts1_age_centered_random_slope <- lmer(log(duration) ~ # control carry-over effects from previous trials:
+                                                           previous_reading_times_log_centered +
+                                                           # control diff. response strategies 
+                                                           # on block- and participant-level:
+                                                           dprime_centered + 
+                                                           mean_dprime_singletasks_centered +
+                                                           compr_Qs_percent_correct_mean_centered +
+                                                           compr_Qs_percent_correct_diff_centered + 
+                                                           # lab vs. online:
+                                                           recording_location + 
+                                                           # properties of words: 
+                                                           word_frequency_centered + 
+                                                           word_length_single_centered +
+                                                           # was there an n-back response in the trial?
+                                                           reaction + 
+                                                           # position of trial in experiment for 
+                                                           # controlling training & tiredness effects:
+                                                           block_nr + trial_nr +
+                                                           # scrambled surprisal scores all TS except for TS1
+                                                           surprisal_4_centered_scrambled +
+                                                           surprisal_12_centered_scrambled +
+                                                           surprisal_60_centered_scrambled +
+                                                           # Surprisal on TS 1, age & cognitive load condition:
+                                                           # main effects & their 2-way and 3-way interactions 
+                                                           surprisal_1_centered * age_centered * cognitive_load + 
+                                                           # subject-specific random slope of cognitive load:
+                                                           # cognitive load could have different 
+                                                           # effects on different participants
+                                                           (1 + cognitive_load | ID) + 
+                                                           # random slopes for text, word and colour, 
+                                                           # because we picked them "randomly" from a 
+                                                           # billion of possible other texts, words and colours
+                                                           (1 | text_nr) + 
+                                                           (1 | word) + 
+                                                           (1 | colour), 
+                                                           data = lmm_df, REML = TRUE, 
+                                                           # choose bobyqa optimizer 
+                                                           # (= Bound Optimization BY Quadratic Approximation) 
+                                                           # for estimating model parameters. 
+                                                           # It's efficient (= good for large datasets & 
+                                                           # complex models) and relatively conservative.
+                                                           lmerControl(optimizer = "bobyqa"))
+# save model output:
+saveRDS(m_RT_ts1_age_centered_random_slope, 
+        file = "Analysis/RData/Mixed_models/m_RT_ts1_age_centered_random_slope.rds")
+
+## also run a version without mean-centering age for Johnson Neyman plots
+m_RT_ts1_No_centering_age <- lmer(log(duration) ~ previous_reading_times_log_centered + 
+                                                  dprime_centered + 
+                                                  mean_dprime_singletasks_centered + 
+                                                  compr_Qs_percent_correct_mean_centered +
+                                                  compr_Qs_percent_correct_diff_centered + 
+                                                  recording_location + word_frequency_centered +
+                                                  word_length_single_centered + reaction + 
+                                                  block_nr + trial_nr + 
+                                                  surprisal_4_centered_scrambled + 
+                                                  surprisal_12_centered_scrambled + 
+                                                  surprisal_60_centered_scrambled + 
+                                                  surprisal_1_centered * age * cognitive_load + 
+                                                  (1 + cognitive_load | ID) + (1 | text_nr) + 
+                                                  (1 | word) + (1 | colour), 
+                                                  data = lmm_df, REML = TRUE, lmerControl(optimizer = "bobyqa"))
+saveRDS(m_ts1_all_ts_no_cent, 
+        file = "Analysis/RData/Mixed_models/m_RT_ts1_No_centering_age.rds")
+
+# summary(m_RT_ts1_age_centered_random_slope)
+# also nice because here you can also see the 
+# p-values before FDR correction:
+Anova(m_RT_ts1_age_centered_random_slope)
+
+# this basically does the same thing but you get 
+# a cool table with FDR-corrected p-values:
+tab_model(m_RT_ts1_age_centered_random_slope, 
+          show.se = TRUE, 
+          show.stat = TRUE,
+          show.df = TRUE,
+          p.val = 'satterthwaite', 
+          p.adjust='fdr', 
+          #p.style='scientific',
+          digits = 3, 
+          digits.p = 3)
+
+#---- Time Scale 4 ----
+m_RT_ts4_age_centered_random_slope <- lmer(log(duration) ~ previous_reading_times_log_centered + 
+                                                           dprime_centered + 
+                                                           mean_dprime_singletasks_centered + 
+                                                           compr_Qs_percent_correct_mean_centered +
+                                                           compr_Qs_percent_correct_diff_centered + 
+                                                           recording_location + word_frequency_centered + 
+                                                           word_length_single_centered + 
+                                                           reaction + block_nr + trial_nr + 
+                                                           surprisal_1_centered_scrambled + 
+                                                           surprisal_12_centered_scrambled + 
+                                                           surprisal_60_centered_scrambled + 
+                                                           surprisal_4_centered * age_centered * cognitive_load + 
+                                                           (1 + cognitive_load | ID) + 
+                                                           (1 | text_nr) + (1 | word) + (1 | colour), 
+                                                           data = lmm_df, REML = TRUE, lmerControl(optimizer = "bobyqa"))
+saveRDS(m_RT_ts4_age_centered_random_slope, 
+        file = "Analysis/RData/Mixed_models/m_RT_ts4_age_centered_random_slope.rds")
+
+## also run a version without mean-centering age for Johnson Neyman plots
+m_RT_ts4_No_centering_age <- lmer(log(duration) ~ previous_reading_times_log_centered + 
+                                    dprime_centered + mean_dprime_singletasks_centered + 
+                                    compr_Qs_percent_correct_mean_centered + 
+                                    compr_Qs_percent_correct_diff_centered + 
+                                    recording_location + word_frequency_centered + 
+                                    word_length_single_centered + reaction + block_nr + trial_nr + 
+                                    surprisal_1_centered_scrambled + 
+                                    surprisal_12_centered_scrambled +
+                                    surprisal_60_centered_scrambled + 
+                                    surprisal_4_centered * age * cognitive_load + 
+                                    (1 + cognitive_load | ID) + 
+                                    (1 | text_nr) + (1 | word) + (1 | colour), 
+                                  data = lmm_df, REML = TRUE, lmerControl(optimizer = "bobyqa"))
+saveRDS(m_ts4_all_ts_no_cent, 
+        file = "Analysis/RData/Mixed_models/m_RT_ts4_No_centering_age.rds")
+
+# summary(m_RT_ts4_age_centered_random_slope)
+Anova(m_RT_ts4_age_centered_random_slope)
+# get table with FDR-corrected values:
+tab_model(m_RT_ts4_age_centered_random_slope, 
+          show.se = TRUE, 
+          show.stat = TRUE,
+          show.df = TRUE,
+          p.val = 'satterthwaite', 
+          p.adjust='fdr', 
+          #p.style='scientific',
+          digits = 3, 
+          digits.p = 3)
+
+#---- Time Scale 12 ----
+m_RT_ts12_age_centered_random_slope <- lmer(log(duration) ~ previous_reading_times_log_centered + 
+                                                            dprime_centered + mean_dprime_singletasks_centered +
+                                                            compr_Qs_percent_correct_mean_centered +
+                                                            compr_Qs_percent_correct_diff_centered + recording_location +
+                                                            word_frequency_centered + word_length_single_centered + 
+                                                            reaction + block_nr + trial_nr + 
+                                                            surprisal_1_centered_scrambled +
+                                                            surprisal_4_centered_scrambled + 
+                                                            surprisal_60_centered_scrambled + 
+                                                            surprisal_12_centered * age_centered * cognitive_load + 
+                                                            (1 + cognitive_load | ID) + 
+                                                            (1 | text_nr) + (1 | word) + (1 | colour), 
+                                                            data = lmm_df, REML = TRUE, lmerControl(optimizer = "bobyqa"))
+saveRDS(m_RT_ts12_age_centered_random_slope, 
+        file = "Analysis/RData/Mixed_models/m_RT_ts12_age_centered_random_slope.rds")
+
+## also run a version without mean-centering age for Johnson Neyman plots
+m_RT_ts12_No_centering_age <- lmer(log(duration) ~ previous_reading_times_log_centered + 
+                                                   dprime_centered + mean_dprime_singletasks_centered +
+                                                   compr_Qs_percent_correct_mean_centered + 
+                                                   compr_Qs_percent_correct_diff_centered + 
+                                                   recording_location + word_frequency_centered + 
+                                                   word_length_single_centered + reaction + block_nr + trial_nr +
+                                                   surprisal_1_centered_scrambled + 
+                                                   surprisal_4_centered_scrambled +
+                                                   surprisal_60_centered_scrambled + 
+                                                   surprisal_12_centered * age * cognitive_load + 
+                                                   (1 + cognitive_load | ID) + (1 | text_nr) + 
+                                                   (1 | word) + (1 | colour), 
+                                                   data = lmm_df, REML = TRUE, 
+                                                   lmerControl(optimizer = "bobyqa"))
+saveRDS(m_ts12_all_ts_no_cent,
+        file = "Analysis/RData/Mixed_models/m_RT_ts12_No_centering_age.rds")
+
+# summary(m_RT_ts12_age_centered_random_slope)
+Anova(m_RT_ts12_age_centered_random_slope)
+# table with FDR-corrected p-values:
+tab_model(m_RT_ts12_age_centered_random_slope, 
+          show.se = TRUE, 
+          show.stat = TRUE,
+          show.df = TRUE,
+          p.val = 'satterthwaite', 
+          p.adjust='fdr', 
+          #p.style='scientific',
+          digits = 3, 
+          digits.p = 3)
+
+#---- Time Scale 60 ----
+m_RT_ts60_age_centered_random_slope <- lmer(log(duration) ~ previous_reading_times_log_centered + 
+                                                            dprime_centered + mean_dprime_singletasks_centered +
+                                                            compr_Qs_percent_correct_mean_centered +
+                                                            compr_Qs_percent_correct_diff_centered + 
+                                                            recording_location + word_frequency_centered + 
+                                                            word_length_single_centered + reaction + block_nr + trial_nr +
+                                                            surprisal_1_centered_scrambled + surprisal_4_centered_scrambled +
+                                                            surprisal_12_centered_scrambled + 
+                                                            surprisal_60_centered * age_centered * cognitive_load + 
+                                                            (1 + cognitive_load | ID) + 
+                                                            (1 | text_nr) + (1 | word) + (1 | colour),
+                                                            data = lmm_df, REML = TRUE, lmerControl(optimizer = "bobyqa"))
+saveRDS(m_RT_ts60_age_centered_random_slope, 
+        file = "Analysis/RData/Mixed_models/m_RT_ts60_age_centered_random_slope.rds")
+
+## also run a version without mean-centering age for Johnson Neyman plots
+m_RT_ts60_No_centering_age <- lmer(log(duration) ~ previous_reading_times_log_centered + 
+                                                   dprime_centered + mean_dprime_singletasks_centered +
+                                                   compr_Qs_percent_correct_mean_centered + 
+                                                   compr_Qs_percent_correct_diff_centered + 
+                                                   recording_location + word_frequency_centered + 
+                                                   word_length_single_centered + reaction + 
+                                                   block_nr + trial_nr +
+                                                   surprisal_1_centered_scrambled + 
+                                                   surprisal_4_centered_scrambled + 
+                                                   surprisal_12_centered_scrambled + 
+                                                   surprisal_60_centered * age * cognitive_load + 
+                                                   (1 + cognitive_load | ID) + 
+                                                   (1 | text_nr) + (1 | word) + (1 | colour), 
+                                                   data = lmm_df, 
+                                                   REML = TRUE, 
+                                                   lmerControl(optimizer = "bobyqa"))
+saveRDS(m_ts60_all_ts_no_cent, 
+        file = "Analysis/RData/Mixed_models/m_RT_ts60_No_centering_age.rds")
+
+# summary(m_RT_ts60_age_centered_random_slope)
+Anova(m_RT_ts60_age_centered_random_slope)
+# table with FDR-corrected p-values:
+tab_model(m_RT_ts60_age_centered_random_slope, 
+          show.se = TRUE, 
+          show.stat = TRUE,
+          show.df = TRUE,
+          p.val = 'satterthwaite', 
+          p.adjust='fdr', 
+          #p.style='scientific',
+          digits = 3, 
+          digits.p = 3)
+
+
+
+```
+
+
+# Models for Task Performance
+--> model dual-task d-primes and comprehension Q performance
+``` {r model task performance}
+
+# ---------- dual-task d-primes ----------
+
+# The distribution of the d-primes isn't ideal but we can't use a 
+# log or Gamma distribution due to negative d-primes. 
+# --> stick to the "normal" distribution for now and use LMM!
+
+# only look at 1-back and 2-back, because there was no n-back task in the BL condition.
+lmm_df_dprimes <- subset(lmm_df, cognitive_load != "BL")
+lmm_df_dprimes$cognitive_load <- droplevels(lmm_df_dprimes$cognitive_load)
+
+# Assign simple coding scheme for the 2 cognitive load levels:
+lmm_df_dprimes$cognitive_load <- as.factor(lmm_df_dprimes$cognitive_load)
+c <- contr.treatment(2) # create dummy coding scheme
+my.coding <- matrix(rep(1/2, 2), ncol = 1) # make matrix 
+my.simple <- c-my.coding
+contrasts(lmm_df_dprimes$cognitive_load) <- my.simple
+
+# run model with age = centered:
+m_dprimes_age_centered <- lmer(dprime ~ # control diff. response strategies 
+                           # on block- and participant-level:
+                           mean_dprime_singletasks_centered +
+                           compr_Qs_percent_correct_mean_centered +
+                           compr_Qs_percent_correct_diff_centered + 
+                           # lab vs. online:
+                           recording_location + 
+                           # position of block in experiment for 
+                           # controlling training & tiredness effects:
+                           block_nr +
+                           age_centered * cognitive_load + 
+                           # subject-specific random slope of cognitive load:
+                           # cognitive load could have different 
+                           # effects on different participants
+                           (1 + cognitive_load | ID) + 
+                           # random slope for text,
+                           # because we picked them "randomly" from a 
+                           # billion of possible other texts:
+                           (1 | text_nr),
+                           data = lmm_df_dprimes,
+                           # should restricted maximum likelihood estimation (REML) be used?
+                           REML = TRUE, 
+                           # choose bobyqa optimizer:
+                           lmerControl(optimizer = "bobyqa"))
+
+# also save model outputs:
+saveRDS(m_dprimes_age_centered, 
+        file = here::here("Analysis/RData/m_dprimes_age_centered.rds"))
+
+# print results: 
+message("Results for d-primes:")
+
+# table with FDR-corrected p-values:
+tab_model(m_dprimes_age_centered, 
+          seed = 42,
+          show.se = TRUE, 
+          show.stat = FALSE,
+          show.intercept = FALSE, 
+          show.df = FALSE,
+          show.re.var = FALSE,
+          show.icc = TRUE,
+          show.obs = FALSE,
+          p.style = "scientific",
+          p.threshold = c(0.05), # make star after all values < 0.05
+          p.adjust='fdr', 
+          df.method = "satterthwaite",
+          digits = 6, 
+          digits.p = 3)
+
+# print model fit:
+get_gof(m_dprimes_age_centered)
+
+
+# plot effect of load and age on n-back performance:
+marginal_effects_dprime_age_load <- plot(ggeffect(m_dprimes_age_centered, 
+                                                  terms = c("age_centered", "cognitive_load")),
+                                                  color = palet_load[c(2,3)],
+                                         show_ci = T,
+                                         line_size = 2, 
+                                         alpha = 0.4) + 
+                                         coord_cartesian(ylim = c(0, 4.5)) + 
+                                         labs(x = "Age", y = "d-prime") +
+                                         theme_minimal() + 
+                                         theme(panel.grid.minor = element_blank(), 
+                                         panel.grid.major = element_blank(),
+                                         axis.ticks = element_line(color = "black"),
+                                         axis.line = element_line(color = "black")) +
+                                         # back-transform centered age variable 
+                                         # so it makes more sense here:   
+                                         scale_x_continuous(breaks = c(20 - mean(lmm_df$age), 
+                                                                       40 - mean(lmm_df$age),
+                                                                       60 - mean(lmm_df$age),
+                                                                       80 - mean(lmm_df$age)), 
+                                                            labels = c(20, 40, 60, 80))
+
+ggsave(plot = marginal_effects_dprime_age_load, 
+       filename = here::here(paste0("Plots/marginal_effects_dprimes_age_load_", today, ".pdf")),         
+       width = 5, height = 6, device = "pdf")
+
+
+# ---------- comprehension Qs ----------
+
+# edit df_comprehension_Qs a bit. We exclude all training 
+# blocks and then reshape it to long format, with all questions 
+# in 1 column and the accuracies in another one:
+df_comprehension_Qs_long <- df_comprehension_Qs %>% 
+                              dplyr::select(-nr_correct) %>% 
+                                filter(block_kind != "reading_baseline_training") %>% 
+                                    pivot_longer(1:3, 
+                                                 names_to = "question", 
+                                                 values_to = "accuracy")
+
+# assign simple coding scheme for the 
+# variables "block_kind" (aka cognitive load) and "recording_location":
+df_comprehension_Qs_long$block_kind <- factor(df_comprehension_Qs_long$block_kind, 
+                                              levels = c("Reading_BL_main", "1back_main", "2back_main"))
+c <- contr.treatment(3) # create dummy coding scheme
+my.coding <- matrix(rep(1/3, 6), ncol = 2) # make matrix 
+my.simple <- c-my.coding
+contrasts(df_comprehension_Qs_long$block_kind) <- my.simple
+
+df_comprehension_Qs_long$recording_location <- as.factor(df_comprehension_Qs_long$recording_location)
+c <- contr.treatment(2) # create dummy coding scheme
+my.coding <- matrix(rep(1/2, 2), ncol = 1) # make matrix 
+my.simple <- c-my.coding
+contrasts(df_comprehension_Qs_long$recording_location) <- my.simple
+
+# center age variable:
+df_comprehension_Qs_long$age_cent <- scale(df_comprehension_Qs_long$age, scale = F)
+
+# model comprehension question performance as binomial variable
+m_compr_Qs_age_centered <- glmer(accuracy ~ block_kind * age_cent + 
+                               recording_location + 
+                               (1 | ID) + 
+                               (1 | text_nr), 
+                               data = df_comprehension_Qs_long, 
+                               family = binomial(link = "logit"),
+                               glmerControl(optimizer = "bobyqa"))
+
+# Explanation for future Merle: 
+# We can't add task performance measures to this model because we don't 
+# have any d-primes for the BL condition, so this would mean the 
+# block gets kicked out in the model. And adding block_nr does more 
+# harm than good because the model fit is lower with block_nr included for some reason.
+
+# save model output:
+saveRDS(m_compr_Qs_age_centered, 
+        file = here::here("Analysis/RData/m_compr_Qs_age_centered.rds"))
+
+# Print the results:
+message("Results for comprehension question accuracy:")
+
+# table with FDR-corrected p-values:
+tab_model(m_compr_Qs_age_centered, 
+          seed = 42,
+          show.se = TRUE, 
+          show.stat = FALSE,
+          show.intercept = FALSE, 
+          show.df = FALSE,
+          show.re.var = FALSE,
+          show.icc = TRUE,
+          show.obs = FALSE,
+          p.style = "scientific",
+          p.threshold = c(0.05), # make star after all values < 0.05
+          p.adjust='fdr', 
+          df.method = "wald", # use wald here: Kenward-Rogers and Satterthwaite cannot be used for GLMMs
+          digits = 6, 
+          digits.p = 3)
+
+# print model fit:
+get_gof(m_compr_Qs_age_centered)
+
+
+### Plots:
+
+# plot the effects of cognitive load and age:
+marginal_effects_comprehension_Qs_age_load <- plot(ggeffect(m_compr_Qs_age_centered, 
+                                                            terms = c("age_cent", "block_kind")),
+                                               color = palet_load, # why is only first colour used here?! 
+                                               show_ci = T,
+                                               line_size = 2, 
+                                               alpha = 0.4) + 
+                                               coord_cartesian(ylim = c(0, 1)) + 
+                                               labs(x = "Age", y = "% correct answers") +
+                                               theme_minimal() + 
+                                               theme(panel.grid.minor = element_blank(), 
+                                               panel.grid.major = element_blank(),
+                                               legend.position = "none",
+                                               axis.ticks = element_line(color = "black"),
+                                               axis.line = element_line(color = "black")) +
+                                               # back-transform centered age variable 
+                                               # so it makes more sense here:   
+                                               scale_x_continuous(breaks = c(20 - mean(lmm_df$age), 
+                                                                             40 - mean(lmm_df$age),
+                                                                             60 - mean(lmm_df$age),
+                                                                             80 - mean(lmm_df$age)), 
+                                                                  labels = c(20, 40, 60, 80))
+
+ggsave(plot = marginal_effects_comprehension_Qs_age_load, 
+       filename = here::here(paste0("Plots/marginal_effects_comprehension_Qs_age_load_", today, ".pdf")),   
+       width = 5, height = 6, device = "pdf")
+
+```
+
+
+
+
+## Load df from RData
+Running the analyses takes quite some time, so load model outputs if you don't want to run the models again.
+```{r}
+
+# df for lmm: without outliers and without n-back tasks
+load(here::here("Analysis/RData/lmm_df_all_subjects.RData"))
+
+# TS 1
+m_RT_ts1_age_centered_random_slope <- readRDS(here::here("Analysis/RData/m_RT_ts1_age_centered_random_slope.rds")) 
+
+# TS 4
+m_RT_ts4_age_centered_random_slope <- readRDS(here::here("Analysis/RData/m_RT_ts4_age_centered_random_slope.rds")) 
+
+# TS 12:
+m_RT_ts12_age_centered_random_slope <- readRDS(here::here("Analysis/RData/m_RT_ts12_age_centered_random_slope.rds")) 
+
+# TS 60:
+m_RT_ts60_age_centered_random_slope <- readRDS(here::here("Analysis/RData/m_RT_ts60_age_centered_random_slope.rds")) 
+
+# load results from model comparisons:
+m_RT_ts1_twoway <- readRDS(here::here("Analysis/RData/m_RT_ts1_twoway.rds"))
+m_RT_ts4_twoway <- readRDS(here::here("Analysis/RData/m_RT_ts4_twoway.rds"))
+m_RT_ts12_twoway <- readRDS(here::here("Analysis/RData/m_RT_ts12_twoway.rds"))
+m_RT_ts60_twoway <- readRDS(here::here("Analysis/RData/m_RT_ts60_twoway.rds"))
+m_RT_ts1_me <- readRDS(here::here("Analysis/RData/m_RT_ts1_me.rds"))
+m_RT_ts4_me <- readRDS(here::here("Analysis/RData/m_RT_ts4_me.rds"))
+m_RT_ts12_me <- readRDS(here::here("Analysis/RData/m_RT_ts12_me.rds"))
+m_RT_ts60_me <- readRDS(here::here("Analysis/RData/m_RT_ts60_me.rds"))
+
+```
+
+
+
+```{r show create tables with LMM results}
+
+# I'll use the models where age is centered.
+# Prepare to wait, this takes a while to run.
+
+# There's a difference between p-values between Anova() and tab_model() depending on how you set "type" in Anova():
+# type = "III" tests for the main effect after other main effects and 
+# significant (!) interactions. This means p-values for main effects are corrected 
+# for the significant interaction(s) and can't really be interpreted anymore. 
+# If interactions are not significant though, type II gives a more powerful test. 
+# tab_model produces the same p-values as Anova type III.
+# Check this: https://md.psych.bio.uni-goettingen.de/mv/unit/lm_cat/lm_cat_unbal_ss_explained.html
+#Anova(m_RT_ts1_No_centering_age_random_slope, type = "III")
+
+tab_model(m_RT_ts1_age_centered_random_slope, 
+          m_RT_ts4_age_centered_random_slope, 
+          m_RT_ts12_age_centered_random_slope,
+          m_RT_ts60_age_centered_random_slope,
+          seed = 42,
+          show.se = TRUE, 
+          show.stat = FALSE,
+          show.intercept = FALSE, 
+          show.df = FALSE,
+          show.re.var = FALSE,
+          show.icc = TRUE,
+          show.obs = FALSE,
+          p.style = "scientific",
+          p.threshold = c(0.05), # star after all p-values < 0.05
+          p.adjust = NULL, # "fdr"
+          df.method = "satterthwaite",
+          digits = 6, 
+          digits.p = 3)
+# Hint: If this throws an error, try updating packages 
+#       "purr", "sjPlot" and "parameters", and turn R off and on again. 
+
+# Print model fits:
+message("model fit for LMM of TS1:")
+get_gof(m_RT_ts1_age_centered_random_slope)
+message("model fit for LMM of TS4:")
+get_gof(m_RT_ts4_age_centered_random_slope)
+message("model fit for LMM of TS12:")
+get_gof(m_RT_ts12_age_centered_random_slope)
+message("model fit for LMM of TS60:")
+get_gof(m_RT_ts60_age_centered_random_slope)
+
+
+```    
+
+
+## Plot marginal effects (main effects, 2-way interactions & 3-way interactions)
+```{r plot effects, echo = TRUE}
+# plot random effects:
+#install.packages("glmmTMB", type="source")
+#library(glmmTMB)
+#sjPlot::plot_model(mixed.lmer4_prev, type = "re")
+# This doesn't work for some reason
+
+# plot estimates for models (or you just print the summary)
+#sjPlot::plot_model(m_RT_ts1_No_centering_age_random_slope)
+
+
+#### PLOT 3-WAY INTERACTION OF AGE, SURPRISAL AND LOAD (FOR ALL TIME SCALES)################
+
+
+# For TS1
+marginal_effects_ts1 <- plot_model(m_RT_ts1_age_centered_random_slope, 
+                                    type = "pred", 
+                                    terms = c("surprisal_1_centered",
+                                              "cognitive_load",
+                                              "age_centered"),
+                                    line.size = 2,
+                                    title = "Marginal Effects - TS 1",
+                                    colors = palet_load) + 
+                         theme_sjplot2() + 
+                         theme(axis.line.x = element_line(color = "black"))
+#save_plot(file = here::here(paste0("Plots/marginal_effects_ts1_", today, ".png")), 
+#          fig = marginal_effects_ts1,
+#          width = 4, height = 6)
+
+
+# For TS4
+marginal_effects_ts4 <- plot_model(m_RT_ts4_age_centered_random_slope, 
+                                    type = "pred", 
+                                    terms = c("surprisal_4_centered",
+                                              "cognitive_load",
+                                              "age_centered"),
+                                    line.size = 2,
+                                    title = "Marginal Effects - TS 4",
+                                    colors = palet_load) + 
+                         theme_sjplot2() + 
+                         theme(legend.position = "right")
+
+#save_plot(file = here::here(paste0("Plots/marginal_effects_ts4_", today, ".png")), 
+#          fig = marginal_effects_ts4,
+#          width = 4, height = 6)
+
+# For TS12
+marginal_effects_ts12 <- plot_model(m_RT_ts12_age_centered_random_slope, 
+                                    type = "pred", 
+                                    terms = c("surprisal_12_centered",
+                                              "cognitive_load",
+                                              "age_centered"),
+                                    line.size = 2,
+                                    title = "Marginal Effects - TS 12",
+                                    colors = palet_load) + 
+                         theme_sjplot2() + 
+                         theme(legend.position = "right")
+
+#save_plot(file = here::here(paste0("Plots/marginal_effects_ts12_", today, ".png")), 
+#          fig = marginal_effects_ts12,
+#          width = 4, height = 6)
+
+# For TS60
+marginal_effects_ts60 <- plot_model(m_RT_ts60_age_centered_random_slope, 
+                                    type = "pred", 
+                                    terms = c("surprisal_60_centered",
+                                              "cognitive_load",
+                                              "age_centered"),
+                                    line.size = 2,
+                                    title = "Marginal Effects - TS 60",
+                                    colors = palet_load) + 
+                         theme_sjplot2() + 
+                         theme(legend.position = "right")
+
+#save_plot(file = here::here(paste0("Plots/marginal_effects_ts60_", today, ".png")), 
+#          fig = marginal_effects_ts60,
+#          width = 4, height = 6)
+
+
+
+#####PLOT 2-WAY INTERACTION OF COGNITIVE LOAD & SURPRISAL (ALL TIME SCALES) ###############
+
+# cognitive load x TS 1:
+emm_ts1_surprisal_int <- ggeffects::ggemmeans(m_RT_ts1_age_centered_random_slope, 
+                                       # important: add [all] here or the x-axis range will be wrong
+                                       terms = c("surprisal_1_centered [all]", "cognitive_load"), 
+                                       rg.limit = 24600,
+                                       ci_level = 0.95, 
+                                       back_transform = TRUE)
+plot_int_TS1 <- plot(emm_ts1_surprisal_int, 
+                     limit.range = TRUE, 
+                     breaks = seq(600, 1400, 200), 
+                     limits = c(500, 1500),
+                     line_size = 2,
+                     show_legend = FALSE,
+                     colors = palet_load,
+                     alpha = 0.4) + 
+                labs(x = "Surprisal",
+                     y = "Reading Time in ms",
+                     title = "(TS 1)") + 
+                coord_cartesian(xlim = c(min(lmm_df$surprisal_1) - mean(lmm_df$surprisal_1), 
+                                         max(lmm_df$surprisal_1) - mean(lmm_df$surprisal_1))) +
+                scale_x_continuous(breaks = c(0 - mean(lmm_df$surprisal_1), 
+                                              20 - mean(lmm_df$surprisal_1),
+                                              40 - mean(lmm_df$surprisal_1), 
+                                              60 - mean(lmm_df$surprisal_1)),
+                                    labels = c(0, 20, 40, 60)) +
+                #scale_y_continuous(breaks = seq(600, 1400, 200), 
+                #                   limits = c(500, 1500),
+                #                   labels = c("","","","","")) +
+                theme_minimal() + 
+                theme(panel.grid.minor = element_blank(), 
+                panel.grid.major = element_blank(),
+                axis.ticks = element_line(color = "black"),
+                axis.line = element_line(color = "black")) 
+
+
+# cognitive load x TS 4:
+emm_ts4_surprisal_int <- ggeffects::ggemmeans(m_RT_ts4_age_centered_random_slope, 
+                                       # important: add [all] here or the x-axis range will be wrong
+                                       terms = c("surprisal_4_centered [all]", "cognitive_load"), 
+                                       rg.limit = 24600,
+                                       ci_level = 0.95, 
+                                       back_transform = TRUE)
+plot_int_TS4 <- plot(emm_ts4_surprisal_int, 
+                     limit.range = TRUE, 
+                     breaks = seq(600, 1400, 200), 
+                     limits = c(500, 1500),
+                     line_size = 2,
+                     show_legend = FALSE,
+                     colors = palet_load,
+                     alpha = 0.4) + 
+                labs(x = "Surprisal",
+                     y = "",
+                     title = "(TS 4)") + 
+                coord_cartesian(xlim = c(min(lmm_df$surprisal_1) - mean(lmm_df$surprisal_1), 
+                                         max(lmm_df$surprisal_1) - mean(lmm_df$surprisal_1))) +
+                scale_x_continuous(breaks = c(0 - mean(lmm_df$surprisal_1), 
+                                              20 - mean(lmm_df$surprisal_1),
+                                              40 - mean(lmm_df$surprisal_1), 
+                                              60 - mean(lmm_df$surprisal_1)),
+                                    labels = c(0, 20, 40, 60)) +
+                scale_y_continuous(breaks = seq(600, 1400, 200), 
+                                   limits = c(500, 1500),
+                                   labels = c("","","","","")) +
+                theme_minimal() + 
+                theme(panel.grid.minor = element_blank(), 
+                panel.grid.major = element_blank(),
+                axis.ticks = element_line(color = "black"),
+                axis.line = element_line(color = "black")) 
+
+# TS 12:
+emm_ts12_surprisal_int <- ggeffects::ggemmeans(m_RT_ts12_age_centered_random_slope, 
+                                       # important: add [all] here or the x-axis range will be wrong
+                                       terms = c("surprisal_12_centered [all]", "cognitive_load"), 
+                                       rg.limit = 24600,
+                                       ci_level = 0.95, 
+                                       back_transform = TRUE)
+plot_int_TS12 <- plot(emm_ts12_surprisal_int, 
+                     limit.range = TRUE, 
+                     breaks = seq(600, 1400, 200), 
+                     limits = c(500, 1500),
+                     line_size = 2,
+                     show_legend = FALSE,
+                     colors = palet_load,
+                     alpha = 0.4) + 
+                labs(x = "Surprisal",
+                     y = "",
+                     title = "(TS 12)") + 
+                coord_cartesian(xlim = c(min(lmm_df$surprisal_1) - mean(lmm_df$surprisal_1), 
+                                         max(lmm_df$surprisal_1) - mean(lmm_df$surprisal_1))) +
+                scale_x_continuous(breaks = c(0 - mean(lmm_df$surprisal_1), 
+                                              20 - mean(lmm_df$surprisal_1),
+                                              40 - mean(lmm_df$surprisal_1), 
+                                              60 - mean(lmm_df$surprisal_1)),
+                                    labels = c(0, 20, 40, 60)) +
+                scale_y_continuous(breaks = seq(600, 1400, 200), 
+                                   limits = c(500, 1500),
+                                   labels = c("","","","","")) +
+                theme_minimal() + 
+                theme(panel.grid.minor = element_blank(), 
+                panel.grid.major = element_blank(),
+                axis.ticks = element_line(color = "black"),
+                axis.line = element_line(color = "black")) 
+
+# TS 60:
+emm_ts60_surprisal_int <- ggeffects::ggemmeans(m_RT_ts60_age_centered_random_slope, 
+                                       # important: add [all] here or the x-axis range will be wrong
+                                       terms = c("surprisal_60_centered [all]", "cognitive_load"), 
+                                       rg.limit = 24600,
+                                       ci_level = 0.95, 
+                                       back_transform = TRUE)
+plot_int_TS60 <- plot(emm_ts60_surprisal_int, 
+                     limit.range = TRUE, 
+                     show_legend = FALSE,
+                     breaks = seq(600, 1400, 200), 
+                     limits = c(500, 1500),
+                     line_size = 2,
+                     colors = palet_load,
+                     alpha = 0.4) + 
+                labs(x = "Surprisal",
+                     y = "",
+                     title = "(TS 60)") + 
+                coord_cartesian(xlim = c(min(lmm_df$surprisal_1) - mean(lmm_df$surprisal_1), 
+                                         max(lmm_df$surprisal_1) - mean(lmm_df$surprisal_1))) +
+                scale_x_continuous(breaks = c(0 - mean(lmm_df$surprisal_1), 
+                                              20 - mean(lmm_df$surprisal_1),
+                                              40 - mean(lmm_df$surprisal_1), 
+                                              60 - mean(lmm_df$surprisal_1)),
+                                    labels = c(0, 20, 40, 60)) +
+                scale_y_continuous(breaks = seq(600, 1400, 200), 
+                                   limits = c(500, 1500),
+                                   labels = c("","","","","")) +
+                theme_minimal() + 
+                theme(panel.grid.minor = element_blank(), 
+                panel.grid.major = element_blank(),
+                axis.ticks = element_line(color = "black"),
+                axis.line = element_line(color = "black")) 
+
+
+  
+  
+# Combine the 4 plots so each is 1 column (this takes some time to run):
+marginal_effects_ts_load <- grid.arrange(plot_int_TS1, 
+                                         plot_int_TS4, 
+                                         plot_int_TS12, 
+                                         plot_int_TS60,
+                                         widths = c(1.2, 1, 1, 1),
+                                         nrow = 1)
+ggsave(plot = marginal_effects_ts_load, 
+       filename = here::here(paste0("Plots/marginal_effects_ts_load_", today, ".pdf")),       
+       width = 10, height = 5, device = "pdf")
+
+
+##### PLOT MAIN EFFECTS ###############
+
+# Age, Surprisal and Load 
+# (all on TS1 because there are no huge differences between Timescales anyway)
+
+
+# Reading gets a lot slower with increasing age:
+emm_ts1_age_me <- ggeffects::ggemmeans(m_RT_ts1_age_centered_random_slope, 
+                                       # important: add [all] here or the x-axis range will be wrong
+                                       terms = "age_centered [all]", 
+                                       ci_level = 0.95, 
+                                       back_transform = TRUE)
+plot_age_TS1 <- plot(emm_ts1_age_me, 
+                     limit.range = TRUE, 
+                     breaks = seq(600, 1400, 200), 
+                     limits = c(500, 1500),
+                     line_size = 2,
+                     colors = palet_effects,
+                     alpha = 0.4) + 
+                labs(x = "Age",
+                     y = "Reading Time in ms",
+                     title = "Age (TS 1)") + 
+                coord_cartesian(xlim = c(min(lmm_df$age) - mean(lmm_df$age), max(lmm_df$age) - mean(lmm_df$age))) +
+                scale_x_continuous(breaks = c(20 - mean(lmm_df$age), 
+                                              40 - mean(lmm_df$age),
+                                              60 - mean(lmm_df$age), 
+                                              80 - mean(lmm_df$age)),
+                                    labels = c(20, 40, 60, 80)) +
+                theme_minimal() + 
+                theme(panel.grid.minor = element_blank(), 
+                panel.grid.major = element_blank(),
+                axis.ticks = element_line(color = "black"),
+                axis.line = element_line(color = "black")) 
+
+
+# The following snippet doesn't run on my laptop for some reason (maybe because I use an older R version), 
+# but with this you can check how fast (in ms) people read in different age groups. 
+#ggeffects::predict_response(m_RT_ts12_age_centered_random_slope, terms = c("age_centered"))
+# The ages here are still centered, but there is a 10 year gap between the age groups shown in the 
+# output, so if you take the difference between predicted RTs of 2 groups and divide it by the age difference, 
+# you get the difference in RT / year. It should be:
+# (731.12ms - 655.65ms) / 10 years = 7.547 ms / year
+
+
+
+# Reading gets a lot slower with increasing load:
+
+emm_ts1_load_me <- ggeffects::ggemmeans(m_RT_ts1_age_centered_random_slope, 
+                                       # important: add [all] here or the x-axis range will be wrong
+                                       terms = "cognitive_load [all]", 
+                                       ci_level = 0.95, 
+                                       back_transform = TRUE)
+plot_load_TS1 <- plot(emm_ts1_load_me, 
+                     limit.range = TRUE, 
+                     breaks = seq(600, 1400, 200), 
+                     limits = c(500, 1500),
+                     line_size = 2,
+                     colors = palet_effects,
+                     alpha = 0.4) + 
+                labs(x = "Cognitive Load",
+                     y = "",
+                     title = "Cognitive Load (TS 1)") + 
+                scale_y_continuous(breaks = seq(600, 1400, 200), 
+                                   limits = c(500, 1500),
+                                   labels = c("","","","","")) +
+                theme_minimal() + 
+                theme(panel.grid.minor = element_blank(), 
+                panel.grid.major = element_blank(),
+                axis.ticks = element_line(color = "black"),
+                axis.line = element_line(color = "black"))
+
+
+# Reading gets slower with increasing surprisal:
+emm_ts1_surprisal_me <- ggeffects::ggemmeans(m_RT_ts1_age_centered_random_slope, 
+                                       # important: add [all] here or the x-axis range will be wrong
+                                       terms = "surprisal_1_centered [all]", 
+                                       rg.limit = 23440,
+                                       ci_level = 0.95, 
+                                       back_transform = TRUE)
+plot_surprisal_TS1 <- plot(emm_ts1_surprisal_me, 
+                     limit.range = TRUE, 
+                     breaks = seq(600, 1400, 200), 
+                     limits = c(500, 1500),
+                     line_size = 2,
+                     colors = palet_effects,
+                     alpha = 0.4) + 
+                labs(x = "Surprisal",
+                     y = "",
+                     title = "Surprisal (TS 1)") + 
+                coord_cartesian(xlim = c(min(lmm_df$surprisal_1) - mean(lmm_df$surprisal_1), 
+                                         max(lmm_df$surprisal_1) - mean(lmm_df$surprisal_1))) +
+                scale_x_continuous(breaks = c(0 - mean(lmm_df$surprisal_1), 
+                                              20 - mean(lmm_df$surprisal_1),
+                                              40 - mean(lmm_df$surprisal_1), 
+                                              60 - mean(lmm_df$surprisal_1)),
+                                    labels = c(0, 20, 40, 60)) +
+                scale_y_continuous(breaks = seq(600, 1400, 200), 
+                                   limits = c(500, 1500),
+                                   labels = c("","","","","")) +
+                theme_minimal() + 
+                theme(panel.grid.minor = element_blank(), 
+                panel.grid.major = element_blank(),
+                axis.ticks = element_line(color = "black"),
+                axis.line = element_line(color = "black")) 
+
+# Combine the 3 plots so each is 1 column:
+marginal_effects_age_surprisal_load <- grid.arrange(plot_age_TS1, 
+                                         plot_load_TS1, 
+                                         plot_surprisal_TS1,
+                                         widths = c(1.2, 1, 1),
+                                         nrow = 1)
+ggsave(plot = marginal_effects_age_surprisal_load, 
+       filename = here::here(paste0("Plots/marginal_effects_age_surprisal_load_", today, ".pdf")),         
+       width = 10, height = 5, device = "pdf")
+
+```
+
+
+````{r plot simple slopes}
+
+# Load simple slopes results:
+#load(here::here("Analysis/RData/simslopes_ts1.RData")) 
+#load(here::here("Analysis/RData/simslopes_ts4.RData")) 
+#load(here::here("Analysis/RData/simslopes_ts12.RData")) 
+#load(here::here("Analysis/RData/simslopes_ts60.RData")) 
+
+## load individual plots into variables & change line & fill colour
+
+# TS1
+baseline_ts1 <- ss_RT_ts1_noCentering_full_random_structure$jn[[1]]$plot +
+                scale_color_manual(values = palet_simple_slopes) +
+                scale_fill_manual(values = palet_simple_slopes)
+one_back_ts1 <- ss_RT_ts1_noCentering_full_random_structure$jn[[2]]$plot +
+                scale_color_manual(values = palet_simple_slopes) +
+                scale_fill_manual(values = palet_simple_slopes)
+two_back_ts1 <- ss_RT_ts1_noCentering_full_random_structure$jn[[3]]$plot +
+                scale_color_manual(values = palet_simple_slopes) +
+                scale_fill_manual(values = palet_simple_slopes)
+# TS4
+baseline_ts4 <- ss_RT_ts4_noCentering_full_random_structure$jn[[1]]$plot +
+                scale_color_manual(values = palet_simple_slopes) +
+                scale_fill_manual(values = palet_simple_slopes)
+one_back_ts4 <- ss_RT_ts4_noCentering_full_random_structure$jn[[2]]$plot+
+                scale_color_manual(values = palet_simple_slopes) +
+                scale_fill_manual(values = palet_simple_slopes)
+two_back_ts4 <- ss_RT_ts4_noCentering_full_random_structure$jn[[3]]$plot +
+                scale_color_manual(values = palet_simple_slopes) +
+                scale_fill_manual(values = palet_simple_slopes)
+# TS12
+baseline_ts12 <- ss_RT_ts12_noCentering_full_random_structure$jn[[1]]$plot+
+                 scale_color_manual(values = palet_simple_slopes) +
+                 scale_fill_manual(values = palet_simple_slopes)
+one_back_ts12 <- ss_RT_ts12_noCentering_full_random_structure$jn[[2]]$plot+
+                 scale_color_manual(values = palet_simple_slopes) +
+                 scale_fill_manual(values = palet_simple_slopes)
+two_back_ts12 <- ss_RT_ts12_noCentering_full_random_structure$jn[[3]]$plot+
+                 scale_color_manual(values = palet_simple_slopes) +
+                 scale_fill_manual(values = palet_simple_slopes)
+# TS60
+baseline_ts60 <- ss_RT_ts60_noCentering_full_random_structure$jn[[1]]$plot +
+                 scale_color_manual(values = palet_simple_slopes) +
+                 scale_fill_manual(values = palet_simple_slopes)
+one_back_ts60 <- ss_RT_ts60_noCentering_full_random_structure$jn[[2]]$plot +
+                 scale_color_manual(values = palet_simple_slopes) +
+                 scale_fill_manual(values = palet_simple_slopes)
+two_back_ts60 <- ss_RT_ts60_noCentering_full_random_structure$jn[[3]]$plot +
+                 scale_color_manual(values = palet_simple_slopes) +
+                 scale_fill_manual(values = palet_simple_slopes)
+
+
+
+
+## for each time scale, merge all plots together into one column
+simslopes_ts1 <- ggarrange(baseline_ts1 + coord_cartesian(ylim = c(-0.0015, 0.0042)) +
+                           theme(legend.position = "none",
+                                 axis.title.x = element_blank(),
+                                 axis.ticks.x = element_blank(),
+                                 axis.text.x = element_blank(),
+                                 axis.title.y = element_blank()) +
+                           labs(title = "TS 1"),
+                           one_back_ts1 + coord_cartesian(ylim = c(-0.0015, 0.0042)) +
+                           theme(legend.position = "none",
+                                 axis.title.x = element_blank(),
+                                 axis.ticks.x = element_blank(),
+                                 axis.text.x = element_blank(),
+                                 axis.title.y = element_blank()) +
+                           labs(title = NULL),
+                           two_back_ts1 + coord_cartesian(ylim = c(-0.0015, 0.0042)) +
+                           theme(legend.position = "none",
+                                 axis.title.x = element_blank(),
+                                 axis.title.y = element_blank()) +
+                           scale_x_continuous(breaks = c(20, 40, 60, 80)) +
+                           labs(title = NULL), 
+                           ncol = 1)
+
+simslopes_ts4 <- ggarrange(baseline_ts4 + coord_cartesian(ylim = c(-0.0015, 0.0042)) +
+    
+                           theme(legend.position = "none",
+                                 axis.title.x = element_blank(),
+                                 axis.ticks.x = element_blank(),
+                                 axis.text.x = element_blank(),
+                                 axis.text.y = element_blank(),
+                                 axis.ticks.y = element_blank(),
+                                 axis.title.y = element_blank()) +
+                           labs(title = "TS 4"),
+                           one_back_ts4 + coord_cartesian(ylim = c(-0.0015, 0.0042)) +
+                           theme(legend.position = "none",
+                                 axis.title.x = element_blank(),
+                                 axis.ticks.x = element_blank(),
+                                 axis.text.x = element_blank(),
+                                 axis.text.y = element_blank(),
+                                 axis.ticks.y = element_blank(),
+                                 axis.title.y = element_blank()) +
+                           labs(title = NULL),
+                           two_back_ts4 + coord_cartesian(ylim = c(-0.0015, 0.0042)) +
+                           theme(legend.position = "none",
+                                 axis.title.x = element_blank(),
+                                 axis.text.y = element_blank(),
+                                 axis.ticks.y = element_blank(),
+                                 axis.title.y = element_blank()) +
+                           scale_x_continuous(breaks = c(20, 40, 60, 80)) +
+                           labs(title = NULL), 
+                           ncol = 1)
+
+simslopes_ts12 <- ggarrange(baseline_ts12 + coord_cartesian(ylim = c(-0.0015, 0.0042)) +
+                            theme(legend.position = "none",
+                                  axis.title.x = element_blank(),
+                                  axis.ticks.x = element_blank(),
+                                  axis.text.x = element_blank(),
+                                  axis.text.y = element_blank(),
+                                  axis.ticks.y = element_blank(),
+                                  axis.title.y = element_blank()) +
+                           labs(title = "TS 12"),
+                           one_back_ts12 + coord_cartesian(ylim = c(-0.0015, 0.0042)) +
+                           theme(legend.position = "none",
+                                 axis.title.x = element_blank(),
+                                 axis.ticks.x = element_blank(),
+                                 axis.text.x = element_blank(),
+                                 axis.text.y = element_blank(),
+                                 axis.ticks.y = element_blank(),
+                                 axis.title.y = element_blank()) +
+                           labs(title = NULL),
+                           two_back_ts12 + coord_cartesian(ylim = c(-0.0015, 0.0042)) +
+                           theme(legend.position = "none",
+                                 axis.title.x = element_blank(),
+                                 axis.text.y = element_blank(),
+                                 axis.ticks.y = element_blank(),
+                                 axis.title.y = element_blank()) +
+                           scale_x_continuous(breaks = c(20, 40, 60, 80)) +
+                           labs(title = NULL), 
+                           ncol = 1)
+
+simslopes_ts60 <- ggarrange(baseline_ts60 + coord_cartesian(ylim = c(-0.0015, 0.0042)) +    
+                            theme(legend.position = "none",
+                            axis.title.x = element_blank(),
+                            axis.ticks.x = element_blank(),
+                            axis.text.y = element_blank(),
+                            axis.ticks.y = element_blank(),
+                            axis.text.x = element_blank(),
+                            axis.title.y = element_blank()) +
+                            labs(title = "TS 60"),
+                            one_back_ts60 + coord_cartesian(ylim = c(-0.0015, 0.0042)) +
+                            theme(legend.position = "none",
+                                  axis.title.x = element_blank(),
+                                  axis.ticks.x = element_blank(),
+                                  axis.text.y = element_blank(),
+                                  axis.ticks.y = element_blank(),
+                                  axis.text.x = element_blank(),
+                                  axis.title.y = element_blank()) +
+                            labs(title = NULL),
+                            two_back_ts60 + coord_cartesian(ylim = c(-0.0015, 0.0042)) +
+                            theme(legend.position = "none",
+                                  axis.title.x = element_blank(),
+                                  axis.text.y = element_blank(),
+                                  axis.ticks.y = element_blank(),
+                                  axis.title.y = element_blank()) +
+                            scale_x_continuous(breaks = c(20, 40, 60, 80)) +
+                            labs(title = NULL), 
+                            ncol = 1)
+
+
+# Combine the plots so each is 1 column:
+simple_slopes_all_ts <- grid.arrange(simslopes_ts1, 
+                                     simslopes_ts4, 
+                                     simslopes_ts12, 
+                                     simslopes_ts60,
+                                     widths = c(1.3, 1, 1, 1),
+                                     nrow = 1)
+ggsave(plot = simple_slopes_all_ts, 
+       filename = here::here(paste0("Plots/simple_slopes_all_ts_", today, ".pdf")),         
+       width = 10, height = 5, device = "pdf")
+
+````
+
+
+
+
+
+# OLD but maybe usable?
+```{r plot distributions and check multicollinearity, echo = T}
+
+# plot residuals in QQ plot & check if they have a normal distribution:
+#qqnorm(resid(m_compr_Qs))
+#qqline(resid(m_compr_Qs))
+# Nope. I don't know what to do about this, though.
+
+##################
+
+### plot VIFs & model fit: ####
+# careful, this doesn't really make sense for the interaction terms
+#check_model(m_compr_Qs)
+
+# get VIFs like this:
+#vifs <- vif(m_compr_Qs)
+
+# On the interpretation of the output: https://bookdown.org/rwnahhas/RMPH/mlr-collinearity.html 
+# --> section 5.19.1.2 - Generalized VIFs when at least one predictor is categorical
+
+# "The generalized VIF is found in the GVIF column. The GVIF^(1/(2*Df)) 
+# column is the adjusted generalized standard error inflation factor (aGSIF) 
+# and is equal to the square-root of GVIF for continuous predictors and categorical 
+# predictors with just 2 levels (since, for those, Df = 1). 
+
+# Fox and Monette (1992) recommend using the aGSIF, however, since for 
+# categorical predictors with more than 2 levels it adjusts for the number 
+# of levels allowing comparability with the other predictors. 
+
+# A consequence is that when using aGSIF, we must take the square-root of our rules 
+# of thumb for what is a large value – aGSIF values above √2.5 (1.581) may be of concern, 
+# and values above √5 or √10 (2.236 or 3.162) are indicative of a more serious problem.
+
+# Alternatively, you could square the aGSIF values and compare them to 
+# our original rule of thumb cutoffs."
+
+# Plot the aGSIFs
+#vif_df <- data.frame(Predictor = row.names(vifs), aGSIF = vifs[, "GVIF^(1/(2*Df))"])
+#barplot(vif_df$aGSIF, names.arg = vif_df$Predictor, ylab = "GVIF^(1/(2*Df))", xlab = "Predictor", 
+#        main = "adjusted generalized standard error inflation factor (aGSIF) values by predictor", 
+#        ylim = c(0, 2), 
+#        # I want to make all bars yellow that have an aGSIF > √2.5 and 
+#        # bars with an aGSIF > √5 red. The remaining bars should be blue.
+#        col = ifelse(vif_df$aGSIF > sqrt(5), "indianred",
+#                     ifelse(vif_df$aGSIF > sqrt(2.5), "orange",
+#                            "slategray2")),
+#        cex.names = 0.6, # smaller font - some labels are still going over the edge of the plot window, but who cares.
+#        las = 2) # make the labels vertical
+
+```
+
