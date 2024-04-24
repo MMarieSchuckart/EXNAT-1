@@ -6,11 +6,13 @@ Authors: Schuckart, M., Martin, S., Tune, S., Schmitt, L.-M., Hartwigsen, G., & 
 
 Year: 2024 
 
+Preprint: TBA
+
 ___________________________________
 
 ### Contents of this Repository 
 
-In the Analysis folder, you can find the analysis scripts as well as the script for the generation of surprisal scores in GPT-2.
+In the Analysis folder, you can find the analysis scripts as well as the script for the generation of surprisal scores in GPT-2. If you want to run them, you'll need RStudio for the analysis scripts as well as a Python IDE (or Google Colab) for the generation of surprisal scores.
 
 In the Experiment folder, you'll find a .json file containing the experiment.
 You can open, run, export, and modify it as you like using the [lab.js Builder](https://labjs.felixhenninger.com/)
