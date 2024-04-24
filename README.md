@@ -28,9 +28,14 @@ In the Experiment folder, you'll find a .json file containing the experiment.
 <br>You can open, run, export, and modify it as you like using the [lab.js Builder](https://labjs.felixhenninger.com/)
 
 If you have any questions regarding the study or the scripts, please don't hesitate to reach out.
+The data recorded for this project will be published on OSF upon publication of the paper. 
+
 ___________________________________
 
-The data recording for this project will be published on OSF upon publication of the paper. 
+<sup> 
+Copyright (c) 2024, Merle Marie Schuckart<br>
+All rights reserved.
 
-
-
+This source code is licensed under the BSD-style license found in the
+LICENSE file in the root directory of this source tree. 
+</sup> 
