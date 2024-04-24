@@ -1,7 +1,7 @@
 # Limitation of cognitive resources reduces the impact of word predictability across the adult lifespan
 
 
-Here you can find all experimental and analysis scripts for our paper "Limitation of cognitive resources reduces the impact of word predictability across the adult lifespan" (working title: "EXNAT-1" for "Executive Resources in Natural Language Processing - Study 1").
+Here you can find all experimental and analysis scripts for our paper "Limitation of cognitive resources reduces the impact of word predictability across the adult lifespan" (working title: "EXNAT-1").
 <br><br>
 Authors: Merle Schuckart<sup>1,2</sup>, Sandra Martin<sup>3</sup>, Sarah Tune<sup>1,2</sup>, Lea-Maria Schmitt<sup>4</sup>, Gesa Hartwigsen<sup>3,5</sup> & Jonas Obleser<sup>1,2</sup> 
 <br><br>
