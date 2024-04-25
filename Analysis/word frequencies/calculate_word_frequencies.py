@@ -10,7 +10,7 @@ Input: 1 csv file containing 3 columns:
 Output: The same csv, but with a word frequency 
        (in the column word_frequency) for each word.
        
- October 17th 2022, written by Merle Schuckart (merle.schuckart@gmx.de)      
+ October 17th 2022, written by Merle Schuckart      
 
 """
 
@@ -18,7 +18,7 @@ Output: The same csv, but with a word frequency
 """ Import packages"""
 # for setting working directory
 import os 
-
+from pathlib import Path
 # for getting word frequencies:
 from wordfreq import word_frequency 
 # You have to pip install this before importing it
@@ -30,8 +30,11 @@ import pandas as pd # for doing stuff with data frames
 
 """ Read in dataset """
 
-# set working directory
-os.chdir("/Users/merleschuckart/Github/PhD/EXNAT/Onlinestudy_EXNAT-1/Analysis/Word_frequencies")
+# Navigate to the directory containing your script
+file_path = Path(os.getcwd()).parent.joinpath("EXNAT-1/Analysis/Word_frequencies")
+
+# Change to the desired directory
+os.chdir(file_path)
 
 # read in dataset from wd
 word_freq_data = pd.read_csv("Word_freqs.csv", sep = ";")
