@@ -74,14 +74,39 @@ for (pkg in pkgs){
 devtools::install_github("quanteda/stopwords")
 library(stopwords)
 
-#here::i_am("EXNAT-1_Analysis.Rmd") # set path to the current file so we have the Onlinestudy_EXNAT-1 folder as our working directory
-
 ```
 
 ## Load d-prime function from different R script:
 ```{r source d-prime function, echo = FALSE}
 source(here::here("Analysis/get_dprime.R")) # get script
 ```
+
+
+``` {r load word freqs & entropies & surprisal scores for each word}
+
+# load word frequencies
+word_freqs_df = read.csv(here::here("Analysis/word frequencies/Word_freqs.csv"), sep = ";", header = TRUE)[2:4]
+# Explanation: We compute the word frequencies using another
+#              script which is called "calculate_word_frequencies.py".
+#              You can find it in the "Analysis/word frequuencies/" folder.
+#              --> word frequencies were taken from this python package:
+#              Speer, R., Chin, J., Lin, A., Jewett, S., & Nathan, L. (2018, October 3).
+#              LuminosoInsight/wordfreq: v2.2. Zenodo. https://doi.org/10.5281/zenodo.1443582
+
+
+# Load surprisal scores & word entropies
+surprisal_df = read.csv(here::here("Analysis/surprisal scores/vanilla_2words_surprisal_entropy.csv"), sep = ",", header = TRUE)
+# Explanation: I computed the scores in Python using a German GPT-2 model. For each text you can select a context chunk of 2 words
+#              and predict the next word. For each possible continuation of your context, you get probabilities.
+#              If you get the probability for the actual word and compute the negative log of it, you have the surprisal score
+#              for your word. 
+#              The entropies however reflect the distribution of the probabilities. If the model is very "confident" about 
+#              a certain next word prediction, the entropy will be low, if a lot of continuations seem possible, the entropy will be higher.
+#              The script for generating surprisal scores and entropies is located here: 
+#              "Analysis/surprisal scores/Surprisal Scores Generation/Surprisal_Vanilla.py"
+
+```
+
 
 ## Load df from RData
 ```{r}
@@ -106,6 +131,9 @@ load(here::here("Analysis/RData/lmm_df_all_subjects_09_24.RData"))
 m_RT_ts2_age_centered_random_slope_entropy <- readRDS(here::here("Analysis/RData/Mixed_models/m_RT_ts2_age_centered_random_slope_entropy.rds"))
 m_RT_ts2_No_centering_age_random_slope_entropy <- readRDS(here::here("Analysis/RData/Mixed_models/m_RT_ts2_No_centering_age_random_slope_entropy.rds"))
 
+m_RT_ts2_age_centered_online_sample <- readRDS(here::here("Analysis/RData/Mixed_models/m_RT_ts2_age_centered_online_sample.rds"))
+m_RT_ts2_age_centered_replication_sample <- readRDS(here::here("Analysis/RData/Mixed_models/m_RT_ts2_age_centered_replication_sample.rds"))
+
 # load gam result
 m_gam_RT_ts2 <- readRDS(here::here("Analysis/RData/Mixed_models/m_gam_RT_ts2.rds"))
 
@@ -114,6 +142,16 @@ model_comp_lmm_gam <- readRDS(here::here("Analysis/RData/Mixed_models/model_comp
 
 # load simple slopes results
 load(here::here("Analysis/RData/Mixed_models/simslopes_ts2_240925.RData")) # simple slopes for lmm ts2
+
+# ------------------
+
+# Load preprocessed replication data:
+  
+load(here::here("Analysis/RData/replication_lmm_df.RData"))
+load(here::here("Analysis/RData/replication_df_comprehension_Qs.RData"))
+load(here::here("Analysis/RData/replication_df_demogr.RData"))
+
+
 ```
 
 
@@ -680,37 +718,9 @@ for (i in 1:length(file_list)) {
 
   # append "empty" word frequency & surprisal score columns to df
   # to do so, create a vector of column names
-  # col_names <- c("word_frequency", paste0("surprisal_", c(1, 4, 12, 60)))#,
-                 #paste0("surprisal_", c(1, 2, 8, 16, 32), "_ortho"),
-                 #paste0("similarity_", c(1, 2, 8, 16, 32)))
   col_names <- c("word_frequency", "surprisal_2", "entropy_2")#,
   # then add "empty" columns to data frame subj_df
   subj_df[, col_names] <- 0
-
-  # get word frequency & surprisal scores for each word
-  # load word freq df
-  word_freqs_df = read.csv(here::here("Analysis/word frequencies/Word_freqs.csv"), sep = ";", header = TRUE)[2:4]
-  # Explanation: We compute the word frequencies using another
-  #              script which is called "calculate_word_frequencies.py".
-  #              You can find it in the Analysis folder.
-  #              --> word frequencies were taken from this python package:
-  #              Speer, R., Chin, J., Lin, A., Jewett, S., & Nathan, L. (2018, October 3).
-  #              LuminosoInsight/wordfreq: v2.2. Zenodo. https://doi.org/10.5281/zenodo.1443582
-
-
-  # Load surprisal scores
-  # load surprisal scores / similarity scores df with TS = context chunk size
-  # surprisal_df = read.csv(here::here("Analysis/surprisal scores/surprisal_scores_masked_context.csv"), sep = ",", header = TRUE)
-  surprisal_df = read.csv(here::here("Analysis/surprisal scores/vanilla_2words_surprisal_entropy.csv"), sep = ",", header = TRUE)
-
-  # Explanation: I computed the scores in Python using a German GPT-2 model. For each text you can select a context chunk of x words (e.g. 5 words)
-  #              and predict the next word. For each possible continuation of your context, you get probabilities.
-  #              If you get the probability for the actual word and compute the negative log of it, you have the surprisal score
-  #              for your word on time scale x (e.g. 5 words = TS 5). The time scales are all highly correlated, which might be due to the fact that each
-  #              time scale also includes context information from all lower timescales, so it's like a Russian doll situation.
-  #              To deal with this problem, we masked all words that were already processed in lower time scales,
-  #              so each time scale only uses the "new" parts of the input chunk.
-
 
   # loop individual texts
   for (curr_text_nr in unique(subj_df$text_nr)){
@@ -1361,60 +1371,6 @@ df_clean$word_frequency_cat <- cut(df_clean$word_frequency,
                                    breaks = c(0, highest_rare, lowest_high, highest_word_freq),
                                    labels = c("low", "medium", "high"))
 
-
-################
-
-# Turn word surprisal scores into categories:
-
-# Idea:
-# - make several plots - 1 for each surprisal score category
-# You can set the upper/lower percentage of surprisal scores we want to plot here
-# (e.g. plot only reading times for the highest vs. lowest 5 % of surprisal scores)
-upper_percent <- 5
-lower_percent <- 5
-# This is then used for all plots in the next sections.
-
-# We don't have the same texts (and therefore surprisal scores) in each condition, keep that in mind!
-
-# We do the following for each time scale.
-
-# For TS 1:
-surprisal_TS1 <- surprisal_df$surprisal_1
-highest_score_TS1 <- range(surprisal_TS1, na.rm = T)[2]
-# get lowest and highest n% of words (ordered by surprisal score)
-lowest_high_TS1 <- min(head(sort(surprisal_TS1, decreasing = TRUE), length(surprisal_TS1) * upper_percent/100))
-highest_rare_TS1 <- max(head(sort(surprisal_TS1, decreasing = FALSE), length(surprisal_TS1) * lower_percent/100))
-df_clean$surprisal_TS1_cat <- cut(df_clean$surprisal_1,
-                                  breaks = c(0, highest_rare_TS1, lowest_high_TS1, highest_score_TS1),
-                                  labels = c("low", "medium", "high"))
-# For TS 4:
-surprisal_TS4 <- surprisal_df$surprisal_4
-highest_score_TS4 <- range(surprisal_TS4, na.rm = T)[2]
-# get lowest and highest n% of words (ordered by surprisal score)
-lowest_high_TS4 <- min(head(sort(surprisal_TS4, decreasing = TRUE), length(surprisal_TS4) * upper_percent/100))
-highest_rare_TS4 <- max(head(sort(surprisal_TS4, decreasing = FALSE), length(surprisal_TS4) * lower_percent/100))
-df_clean$surprisal_TS4_cat <- cut(df_clean$surprisal_4,
-                                  breaks = c(0, highest_rare_TS4, lowest_high_TS4, highest_score_TS4),
-                                  labels = c("low", "medium", "high"))
-# For TS 12:
-surprisal_TS12 <- surprisal_df$surprisal_12
-highest_score_TS12 <- range(surprisal_TS12, na.rm = T)[2]
-# get lowest and highest n% of words (ordered by surprisal score)
-lowest_high_TS12 <- min(head(sort(surprisal_TS12, decreasing = TRUE), length(surprisal_TS12) * upper_percent/100))
-highest_rare_TS12 <- max(head(sort(surprisal_TS12, decreasing = FALSE), length(surprisal_TS12) * lower_percent/100))
-df_clean$surprisal_TS12_cat <- cut(df_clean$surprisal_12,
-                                   breaks = c(0, highest_rare_TS12, lowest_high_TS12, highest_score_TS12),
-                                   labels = c("low", "medium", "high"))
-# For TS 60:
-surprisal_TS60 <- surprisal_df$surprisal_60
-highest_score_TS60 <- range(surprisal_TS60, na.rm = T)[2]
-# get lowest and highest n% of words (ordered by surprisal score)
-lowest_high_TS60 <- min(head(sort(surprisal_TS60, decreasing = TRUE), length(surprisal_TS60) * upper_percent/100))
-highest_rare_TS60 <- max(head(sort(surprisal_TS60, decreasing = FALSE), length(surprisal_TS60) * lower_percent/100))
-df_clean$surprisal_TS60_cat <- cut(df_clean$surprisal_60,
-                                  breaks = c(0, highest_rare_TS60, lowest_high_TS60, highest_score_TS60),
-                                  labels = c("low", "medium", "high"))
-
 ```
 
 ## save preprocessed data in RData file in folder Analysis
@@ -1516,7 +1472,7 @@ rt_age_log <- ggplot(plot_df, aes(x = Age, y = Reaction_time, color = Condition)
               theme(legend.position=("bottom"))
 
 ggsave(rt_age_log, file = here::here(paste0("Plots/RT_age_cond_log_all_", today, ".pdf")), 
-       width = 6, height = 5)  
+       width = 8, height = 5)  
 
 # plot divided by recording location:
 rt_age_log_location <- ggplot(plot_df,  
@@ -1537,132 +1493,6 @@ rt_age_log_location <- ggplot(plot_df,
 ggsave(rt_age_log_location, 
        file = here::here(paste0("Plots/RT_age_cond_log_location_", today, ".pdf")), 
        width = 8, height = 5)  
-```
-
-
-## Plot RTs by Surprisal TS & Condition (only dual-task blocks; across recording locations)
-```{r plot RTs by Surprisal TS & Condition, message = FALSE, warning = FALSE}
-
-#---- Plot RTs by Surprisal TS and by Surprisal x Condition ----
-plot_surprisal_df <- subset(df_clean, reaction == F) # exclude trials where you had a reaction
-plot_surprisal_df <- pivot_longer(plot_surprisal_df, 
-                                  cols = c("surprisal_1", "surprisal_4",
-                                           "surprisal_12", "surprisal_60"),  
-                                  names_to = "surprisal_ts", 
-                                  values_to = "surprisal")
-plot_surprisal_df$surprisal <- round(plot_surprisal_df$surprisal, digits = 0)
-# Now group by ID, cognitive_load & time scale
-plot_surprisal_df <- plot_surprisal_df %>% 
-                    group_by(ID, cognitive_load, surprisal_ts, surprisal) %>% 
-                    summarise(mean_rt = mean(duration)) %>% 
-                            rename(Surprisal_TS = surprisal_ts, 
-                                   Subject = ID,
-                                   Surprisal = surprisal,
-                                   Condition = cognitive_load,
-                                   Reaction_time = mean_rt)
-
-# change order of n-back levels:
-plot_df$Condition <- factor(plot_df$Condition, levels = c("BL", "1back", "2back"))
-
-# loop time scales, build a plot for each of them:
-for (curr_ts in unique(plot_surprisal_df$Surprisal_TS)){
-  
-  # plot durations with log-transformed axes
-  plot_ts_log <- ggplot(subset(plot_surprisal_df, Surprisal_TS == curr_ts &
-                                              !is.na(Surprisal) & Reaction_time), # get data for current TS
-                            aes(x = Surprisal, 
-                                y = Reaction_time, 
-                                fill = Condition, 
-                                color = Condition), 
-                            width = 4, height = 7)+
-                      geom_smooth(method = lm, aes(fill = Condition), na.rm = T) +
-                      scale_color_manual(values = palet_load) +
-                      scale_fill_manual(values = palet_load) +
-                      scale_x_continuous(breaks = scales::pretty_breaks(n = 5)) +
-                      facet_wrap(~ Surprisal_TS) +
-                      apatheme +
-                      coord_cartesian(ylim = c(NA, 1300),
-                                      xlim = c(0, 60)) +
-                      # make y-axis log-transformed (with log base e as in log() function)
-                      scale_y_log(breaks=c(500, 750, 1000, 1250), 
-                                  labels=c("500", "750", "1000", "1250")) +
-                      theme(legend.position = "none")
-            
-  # save single plots:
-  #ggsave(plot_ts_log, 
-  #       file = here::here(paste0("Plots/RT_cond_", curr_ts,"_log_", today, ".pdf")), 
-  #       width = 5, height = 8)  
-  
-  # Add y-axis label only for the first plot
-  if (curr_ts == unique(plot_surprisal_df$Surprisal_TS)[1]) {
-    plot_ts_log <- plot_ts_log + labs(y = "Reading Time") 
-  } else {
-    plot_ts_log <- plot_ts_log + theme(axis.text.y = element_blank()) + labs(y = element_blank()) 
-  }
-
-  # assign a unique variable name for the plot: 
-  assign(paste0("plot_ts_log", curr_ts), plot_ts_log)
-  
-  
-  # Do the same but use normal (untransformed) y-axes:
-  plot_ts <- ggplot(subset(plot_surprisal_df, Surprisal_TS == curr_ts &
-                                              !is.na(Surprisal)), # get data for current TS
-                            aes(x = Surprisal, 
-                                y = Reaction_time, 
-                                fill = Condition, 
-                                color = Condition), 
-                            width = 4, height = 7)+
-                      # way too many data points for a scatter plot:
-                      #geom_point(aes(color = Condition, fill = Condition), 
-                      #       position = position_jitter(width = 0.04, height = 0),
-                      #       alpha = 0.1,
-                      #       size = 1) +
-                      geom_smooth(method = lm, aes(fill = Condition), na.rm = T) +
-                      scale_color_manual(values = palet_load) +
-                      scale_fill_manual(values = palet_load) +
-                      scale_x_continuous(breaks = scales::pretty_breaks(n = 5)) +
-                      facet_wrap(~ Surprisal_TS) +
-                      apatheme +
-                      coord_cartesian(ylim = c(0, 1500),
-                                      xlim = c(0, 60)) +
-                      theme(legend.position = "none")
-              
-  # save single plots:
-  #ggsave(plot_ts, 
-  #       file = here::here(paste0("Plots/RT_cond_", curr_ts,"_", today, ".pdf")), 
-  #       width = 5, height = 8)  
-  
-  # Add y-axis label only for the first plot
-  if (curr_ts == unique(plot_surprisal_df$Surprisal_TS)[1]) {
-    plot_ts <- plot_ts + labs(y = "Reading Time") 
-  } else {
-    plot_ts <- plot_ts + theme(axis.text.y = element_blank()) + labs(y = element_blank()) 
-  }
-
-  # assign a unique variable name for the plot: 
-  assign(paste0("plot_ts_", curr_ts), plot_ts)
-  
-}
-
-# put all 4 plots into 1 plot with 4 panels:
-plot_ts_cond <- cowplot::plot_grid(plot_ts_surprisal_1, plot_ts_surprisal_4, 
-                                   plot_ts_surprisal_12, plot_ts_surprisal_60, 
-                                   ncol = 4, 
-                                   # make panel 1 27% wider than the rest
-                                   # because it contains the y-axis labels:
-                                   rel_widths = c(1.27,1,1,1)) 
-plot_ts_cond_log <- cowplot::plot_grid(plot_ts_logsurprisal_1, plot_ts_logsurprisal_4, 
-                                   plot_ts_logsurprisal_12, plot_ts_logsurprisal_60, 
-                                   ncol = 4, 
-                                   # make panel 1 37% wider than the rest
-                                   # because it contains the y-axis labels:
-                                   rel_widths = c(1.37,1,1,1)) 
-# save plots:
-cowplot::save_plot(plot_ts_cond, 
-                   file = here::here(paste0("Plots/RT_surprisal_cond_", today, ".pdf")))
-cowplot::save_plot(plot_ts_cond_log, 
-                   file = here::here(paste0("Plots/RT_surprisal_cond_log_", today, ".pdf")))
-
 ```
 
 
@@ -2053,55 +1883,6 @@ lmm_df[paste0(surprisal_cols, "_centered")] <- lapply(lmm_df[surprisal_cols],
                                                                                   center = TRUE, 
                                                                                   scale = FALSE)))
 
-# ----------- scramble all surprisal scores & add as new columns: -----------
-
-# scramble all timescales:
-# loop timescales
-
-# for (i in c(1, 4, 12, 60)) {
-#   # set random seed to make sure they are all shuffled in a different way
-#   # --> I usually use 42 as a seed, but I need different seeds for the different Time Scales or 
-#   # they'll be shuffled in exactly the same way. So I'll just add 1 to my beloved 42 here.
-#   set.seed(42+i)
-#   # shuffle the current timescale x & create new column called surprisal_x_z_scrambled:
-#   lmm_df[[paste0("surprisal_", i, "_z_scrambled")]] <- sample(lmm_df[[paste0("surprisal_", i, "_z")]])
-#   
-#   # shuffle centered surprisal scores in the same way:
-#   set.seed(42+i)
-#   lmm_df[[paste0("surprisal_", i, "_centered_scrambled")]] <- sample(lmm_df[[paste0("surprisal_", i, "_centered")]])
-#   
-#   # Just a sanity check:
-#   # Check correlation between scrambled & unscrambled values so 
-#   # it's not in the same / almost the same order as it was before by accident:
-#   #corr_after_scrambling <- cor(lmm_df[[paste0("surprisal_", i, "_z_scrambled")]], as.vector(lmm_df[[paste0("surprisal_", i, "_z")]]), 
-#   #                             method = "spearman")
-#   #if (round(corr_after_scrambling[1], digits = 1) == 0){
-#   #  print("Sanity check 1: surprisal score vectors are different after shuffling")
-#   #} else { 
-#   #  print("Sanity check 1: surprisal score vectors are still similar after shuffling")
-#   #}
-#   
-#   
-#   # use different seed than before so we could put them into the same model if we wanted to. Just add 1 to the seed we used before: 
-#   set.seed(42+i+1)
-#   lmm_df[[paste0("previous_surprisal_", i, "_z_scrambled")]] <- sample(lmm_df[[paste0("previous_surprisal_", i, "_z")]])
-#   
-#   # use the same seed for previous_surprisal
-#   set.seed(42+i+1)
-#   lmm_df[[paste0("previous_surprisal_", i, "_centered_scrambled")]] <- sample(lmm_df[[paste0("previous_surprisal_", i, "_centered")]])
-#   
-  
-  # Sanity check part 2: check correlation again
-  #corr_after_scrambling <- cor(na.omit(lmm_df[[paste0("previous_surprisal_", i, "_z_scrambled")]]),  na.omit(as.vector(lmm_df[[paste0("previous_surprisal_", i, "_z")]])), 
-  #                             method = "spearman")
-  #if (round(corr_after_scrambling[1], digits = 1) == 0){
-  #  print("Sanity check 2: surprisal score vectors are different after shuffling")
-  #} else { 
-  #  print("Sanity check 2: surprisal score vectors are still similar after shuffling")
-  #}
-}
-
-
 ```
 
 
@@ -2183,7 +1964,7 @@ m_RT_ts2_age_centered_random_slope_entropy <- lmer(log(duration) ~ # control car
                                                            block_nr + trial_nr +
                                                            # entropy
                                                            entropy_2_centered + 
-                                                           # Surprisal on TS 1, age & cognitive load condition:
+                                                           # Surprisal, age & cognitive load condition:
                                                            # main effects & their 2-way and 3-way interactions 
                                                            surprisal_2_centered * age_centered * cognitive_load + 
                                                            # subject-specific random slope of cognitive load:
@@ -2236,114 +2017,217 @@ pred <- predict_response(m_RT_ts2_age_centered_random_slope_entropy, terms = "co
 plot(pred)
 ```
 
-# Model comparisons for statistics of main effects and two-way interactions of cognitive load, surprisal, and age
-```{r}
-#---- Time Scale 1 ----
-## two-way interactions
-m_RT_ts1_twoway <- lmer(log(duration) ~ # control carry-over effects from previous trials:
-                                                           previous_reading_times_log_centered +
-                                                           # control diff. response strategies 
-                                                           # on block- and participant-level:
-                                                           dprime_centered + 
-                                                           mean_dprime_singletasks_centered +
-                                                           compr_Qs_percent_correct_mean_centered +
-                                                           compr_Qs_percent_correct_diff_centered + 
-                                                           # lab vs. online:
-                                                           recording_location + 
-                                                           # properties of words: 
-                                                           word_frequency_centered + 
-                                                           word_length_single_centered +
-                                                           # was there an n-back response in the trial?
-                                                           reaction + 
-                                                           # position of trial in experiment for 
-                                                           # controlling training & tiredness effects:
-                                                           block_nr + trial_nr +
-                                                           # scrambled surprisal scores all TS except for TS1
-                                                           surprisal_4_centered_scrambled +
-                                                           surprisal_12_centered_scrambled +
-                                                           surprisal_60_centered_scrambled +
-                                                           # Surprisal on TS 1, age & cognitive load condition:
-                                                           # main effects & their 2-way interactions 
-                                                           surprisal_1_centered * age_centered + 
-                                                           surprisal_1_centered * cognitive_load + 
-                                                           age_centered * cognitive_load + 
-                                                           # subject-specific random slope of cognitive load:
-                                                           # cognitive load could have different 
-                                                           # effects on different participants
-                                                           (1 + cognitive_load | ID) + 
-                                                           # random slopes for text, word and colour, 
-                                                           # because we picked them "randomly" from a 
-                                                           # billion of possible other texts, words and colours
-                                                           (1 | text_nr) + 
-                                                           (1 | word) + 
-                                                           (1 | colour), 
-                                                           data = lmm_df, REML = TRUE, 
-                                                           # choose bobyqa optimizer 
-                                                           # (= Bound Optimization BY Quadratic Approximation) 
-                                                           # for estimating model parameters. 
-                                                           # It's efficient (= good for large datasets & 
-                                                           # complex models) and relatively conservative.
-                                                           lmerControl(optimizer = "bobyqa"))
-saveRDS(m_RT_ts1_twoway, file = "Analysis/RData/m_RT_ts1_twoway.rds")
 
-# now use drop1 to calculate test statistic for interaction terms
-res_ts1_twoway <- drop1(m_RT_ts1_twoway, test = "Chisq")
 
-## main effects
-m_RT_ts1_me <- lmer(log(duration) ~ # control carry-over effects from previous trials:
-                                                           previous_reading_times_log_centered +
-                                                           # control diff. response strategies 
-                                                           # on block- and participant-level:
-                                                           dprime_centered + 
-                                                           mean_dprime_singletasks_centered +
-                                                           compr_Qs_percent_correct_mean_centered +
-                                                           compr_Qs_percent_correct_diff_centered + 
-                                                           # lab vs. online:
-                                                           recording_location + 
-                                                           # properties of words: 
-                                                           word_frequency_centered + 
-                                                           word_length_single_centered +
-                                                           # was there an n-back response in the trial?
-                                                           reaction + 
-                                                           # position of trial in experiment for 
-                                                           # controlling training & tiredness effects:
-                                                           block_nr + trial_nr +
-                                                           # scrambled surprisal scores all TS except for TS1
-                                                           surprisal_4_centered_scrambled +
-                                                           surprisal_12_centered_scrambled +
-                                                           surprisal_60_centered_scrambled +
-                                                           # Surprisal on TS 1, age & cognitive load condition:
-                                                           # main effects & their 2-way interactions 
-                                                           surprisal_1_centered + age_centered + cognitive_load + 
-                                                           # subject-specific random slope of cognitive load:
-                                                           # cognitive load could have different 
-                                                           # effects on different participants
-                                                           (1 + cognitive_load | ID) + 
-                                                           # random slopes for text, word and colour, 
-                                                           # because we picked them "randomly" from a 
-                                                           # billion of possible other texts, words and colours
-                                                           (1 | text_nr) + 
-                                                           (1 | word) + 
-                                                           (1 | colour), 
-                                                           data = lmm_df, REML = TRUE, 
-                                                           # choose bobyqa optimizer 
-                                                           # (= Bound Optimization BY Quadratic Approximation) 
-                                                           # for estimating model parameters. 
-                                                           # It's efficient (= good for large datasets & 
-                                                           # complex models) and relatively conservative.
-                                                           lmerControl(optimizer = "bobyqa"))
-saveRDS(m_RT_ts1_me, file = "Analysis/RData/m_RT_ts1_me.rds")
 
-# now use drop1 to calculate test statistic for main effects
-res_ts1_me <- drop1(m_RT_ts1_me, test = "Chisq")
+# Comparing 1-back to 2-back instead of to Reading Only
+```{r Control Analysis}
 
-# Example to calculate estimated marginal means and to plot them for age and ts1:
-emm_ts1 <- ggeffects::ggemmeans(m_RT_ts1_me, terms = "age_centered")
-plot(emm_ts1, limit.range = TRUE)
+# 1st approach: This is just a post-hoc contrast of load 1-back vs. 2-back, but I think that just tells us something about the main effect of load. However, in the LMM, we also have significant 2-way and 3-way interactions of load with surprisal and age, and I would also be interested in how those look like without the Reading Only baseline. 
+
+
+#---- Comparing 1-back to 2-back and not only to reading baseline via post-hoc test ----
+test_predictions(m_RT_ts2_age_centered_random_slope_entropy, terms = "cognitive_load [1back, 2back]")
+
+# plotting the difference
+pred <- predict_response(m_RT_ts2_age_centered_random_slope_entropy, terms = "cognitive_load [1back, 2back]")
+plot(pred)
+
+
+# 2nd approach: Create another, simplified LMM with just 2-back vs. 1-back for cognitive load. 
+
+# only look at 1-back and 2-back, because there was no n-back task in the BL condition.
+lmm_df_control <- subset(lmm_df, cognitive_load != "BL")
+# drop unused load levels (aka "BL")
+lmm_df_control$cognitive_load <- droplevels(lmm_df_control$cognitive_load)
+# assign simple coding scheme for the 2 cognitive load levels:
+lmm_df_control$cognitive_load <- as.factor(lmm_df_control$cognitive_load)
+c <- contr.treatment(2) # create dummy coding scheme
+my.coding <- matrix(rep(1/2, 2), ncol = 1) # make matrix 
+my.simple <- c-my.coding
+contrasts(lmm_df_control$cognitive_load) <- my.simple
+
+# fit LMM again:
+m_RT_ts2_age_centered_1back_2back <- lmer(log(duration) ~ previous_reading_times_log_centered + 
+                                                  dprime_centered + 
+                                                  mean_dprime_singletasks_centered + 
+                                                  compr_Qs_percent_correct_mean_centered +
+                                                  compr_Qs_percent_correct_diff_centered + 
+                                                  recording_location + word_frequency_centered +
+                                                  word_length_single_centered + reaction + 
+                                                  block_nr + trial_nr + 
+                                                  entropy_2_centered +
+                                                  surprisal_2_centered * age_centered * cognitive_load + 
+                                                  (1 + cognitive_load | ID) + (1 | text_nr) + 
+                                                  (1 | word) + (1 | colour), 
+                                                  data = lmm_df_control, REML = TRUE, lmerControl(optimizer = "bobyqa"))
+saveRDS(m_RT_ts2_age_centered_1back_2back, 
+        file = "Analysis/RData/Mixed_models/m_RT_ts2_age_centered_1back_2back.rds")
+
+# show results:
+tab_model(m_RT_ts2_age_centered_1back_2back, 
+          seed = 42,
+          show.se = TRUE, 
+          show.stat = TRUE,
+          show.intercept = FALSE, 
+          show.df = FALSE,
+          show.re.var = FALSE,
+          show.icc = TRUE,
+          show.obs = FALSE,
+          p.style = "scientific",
+          p.threshold = c(0.05), # star after all p-values < 0.05
+          p.adjust = "fdr", # NULL
+          df.method = "satterthwaite",
+          digits = 6, 
+          digits.p = 3)
+
+
 ```
 
-# Generalized Additive Mixed Model
-```{r}
+
+
+# Only test online sample for comparing with the replication sample
+```{r Replication Analysis LMM for Online Sample}
+
+# only look at online participants, because we don't have lab participants in the replication sample:
+lmm_df_online <- subset(lmm_df, recording_location == "online")
+
+# fit LMM again, this time without the "recording_location" predictor
+m_RT_ts2_age_centered_online_sample <- lmer(log(duration) ~ previous_reading_times_log_centered + 
+                                                  dprime_centered + 
+                                                  mean_dprime_singletasks_centered + 
+                                                  compr_Qs_percent_correct_mean_centered +
+                                                  compr_Qs_percent_correct_diff_centered + 
+                                                  word_frequency_centered +
+                                                  word_length_single_centered + reaction + 
+                                                  block_nr + trial_nr + 
+                                                  entropy_2_centered +
+                                                  surprisal_2_centered * age_centered * cognitive_load + 
+                                                  (1 + cognitive_load | ID) + (1 | text_nr) + 
+                                                  (1 | word) + (1 | colour), 
+                                                  data = lmm_df_online, REML = TRUE, lmerControl(optimizer = "bobyqa"))
+saveRDS(m_RT_ts2_age_centered_online_sample, 
+        file = "Analysis/RData/Mixed_models/m_RT_ts2_age_centered_online_sample.rds")
+
+# show results:
+tab_model(m_RT_ts2_age_centered_online_sample, 
+          seed = 42,
+          show.se = TRUE, 
+          show.stat = TRUE,
+          show.intercept = FALSE, 
+          show.df = FALSE,
+          show.re.var = FALSE,
+          show.icc = TRUE,
+          show.obs = FALSE,
+          p.style = "scientific",
+          p.threshold = c(0.05), # star after all p-values < 0.05
+          p.adjust = "fdr", # NULL
+          df.method = "satterthwaite",
+          digits = 6, 
+          digits.p = 3)
+
+
+
+# Do the same for the replication data:
+
+# fit LMM again
+m_RT_ts2_age_centered_replication_sample <- lmer(log(duration) ~ previous_reading_times_log_centered + 
+                                                  dprime_centered + 
+                                                  mean_dprime_singletasks_centered + 
+                                                  compr_Qs_percent_correct_mean_centered +
+                                                  compr_Qs_percent_correct_diff_centered + 
+                                                  word_frequency_centered +
+                                                  word_length_single_centered + reaction + 
+                                                  block_nr + trial_nr + 
+                                                  entropy_2_centered +
+                                                  surprisal_2_centered * age_centered * cognitive_load + 
+                                                  (1 + cognitive_load | ID) + (1 | text_nr) + 
+                                                  (1 | word) + (1 | colour), 
+                                                  data = replication_lmm_df, REML = TRUE, lmerControl(optimizer = "bobyqa"))
+saveRDS(m_RT_ts2_age_centered_replication_sample, 
+        file = "Analysis/RData/Mixed_models/m_RT_ts2_age_centered_replication_sample.rds")
+
+# show results:
+tab_model(m_RT_ts2_age_centered_replication_sample, 
+          seed = 42,
+          show.se = TRUE, 
+          show.stat = TRUE,
+          show.intercept = FALSE, 
+          show.df = FALSE,
+          show.re.var = FALSE,
+          show.icc = TRUE,
+          show.obs = FALSE,
+          p.style = "scientific",
+          p.threshold = c(0.05), # star after all p-values < 0.05
+          p.adjust = "fdr", # NULL
+          df.method = "satterthwaite",
+          digits = 6, 
+          digits.p = 3)
+
+
+# TO DO: Add plots with estimates & CI as in Malte's paper.
+# Explanation for future Merle: We don't compare the results directly with the results from the Full OG LMM because the model comprised the recording_location term there, so it's not 100% comparable. 
+
+plot_estimates_OG <- plot_model(m_RT_ts2_age_centered_online_sample, 
+                             terms = c("age_centered",
+                                       "surprisal_2_centered", 
+                                       "cognitive_load2", 
+                                       "cognitive_load3", 
+                                       "age_centered:cognitive_load2",                                                       "age_centered:cognitive_load3",
+                                       "surprisal_2_centered:age_centered",
+                                       "surprisal_2_centered:cognitive_load2",                                                "surprisal_2_centered:cognitive_load3",
+                                  "surprisal_2_centered:age_centered:cognitive_load2", "surprisal_2_centered:age_centered:cognitive_load3"), 
+                             type = "est",  # Plotting the estimates
+                             show.values = FALSE,  # Show the estimate values
+                             show.p = TRUE,  # Show p-values next to estimates
+                             ci.lvl = 0.95,  # 95% confidence intervals
+                             vline.color = "black",  # Solid 0 line
+                             dot.size = 2,  # Size of the dots for estimates
+                             line.size = 1.5,  # Thickness of the whiskers
+                             title = "Estimates and Confidence Intervals",
+                             colors = "Set2") +  # Customize colors
+                ylim(-0.01, 0.01) +
+                theme_minimal() +  # Minimal theme
+                theme(axis.line.y = element_line(color = "black"))  # Y-axis line
+
+
+plot_estimates_replication <- plot_model(m_RT_ts2_age_centered_replication_sample,
+                             terms = c("age_centered",
+                                       #"surprisal_2_centered", 
+                                       #"cognitive_load2", 
+                                       #"cognitive_load3", 
+                                       "age_centered:cognitive_load2",   
+                                       "age_centered:cognitive_load3"#,
+                                       #"surprisal_2_centered:age_centered",
+                                       #"surprisal_2_centered:cognitive_load2",                                                "surprisal_2_centered:cognitive_load3"#,
+                                  #"surprisal_2_centered:age_centered:cognitive_load2", "surprisal_2_centered:age_centered:cognitive_load3"
+                                  ), 
+                             type = "est",  # Plotting the estimates
+                             show.values = FALSE,  # Show the estimate values
+                             show.p = TRUE,  # Show p-values next to estimates
+                             ci.lvl = 0.95,  # 95% confidence intervals
+                             vline.color = "black",  # Solid 0 line
+                             dot.size = 2,  # Size of the dots for estimates
+                             line.size = 1.5,  # Thickness of the whiskers
+                             title = "Estimates and Confidence Intervals",
+                             colors = "Set2") +  # Customize colors
+                ylim(-0.01, 0.012) +
+                theme_minimal() +  # Minimal theme
+                theme(axis.line.y = element_line(color = "black"))  # Y-axis line
+
+
+
+# TO DO: It's really difficult to plot estimates that differ so much. Maybe 2 panels for big and small effects? I think the simple slopes plots would just be confusing. Or could I plot the deviation between estimates?!
+
+
+
+```
+
+
+
+# Generalized Additive Mixed Model (GAM)
+```{r GAM}
+
 # First make sure there are no character columns in the df. Otherwise mgcv will throw an error.
 lmm_df <- lmm_df %>% 
   mutate(across(where(is.character), as.factor))
@@ -2414,15 +2298,22 @@ plot(slopes) +
 
 # plot output table of model
 tab_model(m_gam_RT_ts2, 
+          seed = 42,
           show.se = TRUE, 
           show.stat = TRUE,
+          show.intercept = FALSE, 
           show.df = TRUE,
+          show.re.var = FALSE,
+          show.icc = TRUE,
+          show.obs = FALSE,
           p.val = 'satterthwaite', 
-          p.adjust='fdr', 
-          #p.style='scientific',
-          digits = 3, 
+          p.threshold = c(0.05), # star after all p-values < 0.05
+          p.style='scientific',
+          digits = 6, 
           digits.p = 3)
+
 ```
+
 
 # Models for Task Performance
 --> model dual-task d-primes and comprehension Q performance
@@ -2674,7 +2565,7 @@ get_gof(m_compr_Qs_no_centering)
 
 # plot the effects of cognitive load and age:
 marginal_effects_comprehension_Qs_age_load <- plot(ggeffect(m_compr_Qs, terms = c("age_cent", "block_kind")),
-                                               color = palet_load, # why is only first colour used here?! 
+                                               color = palet_load, # why is only the first colour used here?! 
                                                show_ci = T,
                                                line_size = 2, 
                                                alpha = 0.4) + 
@@ -2952,89 +2843,11 @@ ggsave(plot = marginal_effects_comprehension_Qs_age_load,
 #               family=scat(link="identity"))
 ```
 
-```{r plot distributions and check multicollinearity, echo = T}
 
-# plot residuals in QQ plot & check if they have a normal distribution:
-#qqnorm(resid(m_compr_Qs))
-#qqline(resid(m_compr_Qs))
-# Nope. I don't know what to do about this, though.
-
-##################
-
-### plot VIFs & model fit: ####
-# careful, this doesn't really make sense for the interaction terms
-#check_model(m_compr_Qs)
-
-# get VIFs like this:
-#vifs <- vif(m_compr_Qs)
-
-# On the interpretation of the output: https://bookdown.org/rwnahhas/RMPH/mlr-collinearity.html 
-# --> section 5.19.1.2 - Generalized VIFs when at least one predictor is categorical
-
-# "The generalized VIF is found in the GVIF column. The GVIF^(1/(2*Df)) 
-# column is the adjusted generalized standard error inflation factor (aGSIF) 
-# and is equal to the square-root of GVIF for continuous predictors and categorical 
-# predictors with just 2 levels (since, for those, Df = 1). 
-
-# Fox and Monette (1992) recommend using the aGSIF, however, since for 
-# categorical predictors with more than 2 levels it adjusts for the number 
-# of levels allowing comparability with the other predictors. 
-
-# A consequence is that when using aGSIF, we must take the square-root of our rules 
-# of thumb for what is a large value – aGSIF values above √2.5 (1.581) may be of concern, 
-# and values above √5 or √10 (2.236 or 3.162) are indicative of a more serious problem.
-
-# Alternatively, you could square the aGSIF values and compare them to 
-# our original rule of thumb cutoffs."
-
-# Plot the aGSIFs
-#vif_df <- data.frame(Predictor = row.names(vifs), aGSIF = vifs[, "GVIF^(1/(2*Df))"])
-#barplot(vif_df$aGSIF, names.arg = vif_df$Predictor, ylab = "GVIF^(1/(2*Df))", xlab = "Predictor", 
-#        main = "adjusted generalized standard error inflation factor (aGSIF) values by predictor", 
-#        ylim = c(0, 2), 
-#        # I want to make all bars yellow that have an aGSIF > √2.5 and 
-#        # bars with an aGSIF > √5 red. The remaining bars should be blue.
-#        col = ifelse(vif_df$aGSIF > sqrt(5), "indianred",
-#                     ifelse(vif_df$aGSIF > sqrt(2.5), "orange",
-#                            "slategray2")),
-#        cex.names = 0.6, # smaller font - some labels are still going over the edge of the plot window, but who cares.
-#        las = 2) # make the labels vertical
-
-```
-
-
-
-## Load df from RData
-Running the analyses takes quite some time, so load model outputs if you don't want to run the models again.
-```{r}
-
-# df for lmm: without outliers and without n-back tasks
-load(here::here("Analysis/RData/lmm_df_all_subjects.RData"))
-
-# TS 1: first model with centered age, second model with uncentered age for easier interpretation:
-m_RT_ts1_age_centered_random_slope <- readRDS(here::here("Analysis/RData/m_RT_ts1_age_centered_random_slope.rds")) 
-m_RT_ts1_No_centering_age_random_slope <- readRDS(here::here("Analysis/RData/m_RT_ts1_No_centering_age_random_slope.rds")) 
-
-# TS 4: first model with centered age, second model with uncentered age for easier interpretation:
-m_RT_ts4_age_centered_random_slope <- readRDS(here::here("Analysis/RData/m_RT_ts4_age_centered_random_slope.rds")) 
-m_RT_ts4_No_centering_age_random_slope <- readRDS(here::here("Analysis/RData/m_RT_ts4_No_centering_age_random_slope.rds")) 
-
-# TS 12: first model with centered age, second model with uncentered age for easier interpretation:
-m_RT_ts12_age_centered_random_slope <- readRDS(here::here("Analysis/RData/m_RT_ts12_age_centered_random_slope.rds")) 
-m_RT_ts12_No_centering_age_random_slope <- readRDS(here::here("Analysis/RData/m_RT_ts12_No_centering_age_random_slope.rds")) 
-
-# TS 60: first model with centered age, second model with uncentered age for easier interpretation:
-m_RT_ts60_age_centered_random_slope <- readRDS(here::here("Analysis/RData/m_RT_ts60_age_centered_random_slope.rds")) 
-m_RT_ts60_No_centering_age_random_slope <- readRDS(here::here("Analysis/RData/m_RT_ts60_No_centering_age_random_slope.rds")) 
-
-
-```
-
-
-
+# Show Results: Tables and Plots for the LMM Results
+## Results Tables
 ```{r show create tables with LMM results}
 
-# I'll use the models where age is not centered.
 # Prepare to wait, this takes a while to run.
 
 # There's a difference between p-values between Anova() and tab_model() depending on how you set "type" in Anova():
@@ -3044,15 +2857,12 @@ m_RT_ts60_No_centering_age_random_slope <- readRDS(here::here("Analysis/RData/m_
 # If interactions are not significant though, type II gives a more powerful test. 
 # tab_model produces the same p-values as Anova type III.
 # Check this: https://md.psych.bio.uni-goettingen.de/mv/unit/lm_cat/lm_cat_unbal_ss_explained.html
-#Anova(m_RT_ts1_No_centering_age_random_slope, type = "III")
+#Anova(m_RT_ts2_age_centered_random_slope_entropy, type = "III")
 
-tab_model(m_RT_ts1_No_centering_age_random_slope, 
-          m_RT_ts4_No_centering_age_random_slope, 
-          m_RT_ts12_No_centering_age_random_slope,
-          m_RT_ts60_No_centering_age_random_slope,
+tab_model(m_RT_ts2_age_centered_random_slope_entropy, 
           seed = 42,
           show.se = TRUE, 
-          show.stat = FALSE,
+          show.stat = TRUE,
           show.intercept = FALSE, 
           show.df = FALSE,
           show.re.var = FALSE,
@@ -3060,7 +2870,7 @@ tab_model(m_RT_ts1_No_centering_age_random_slope,
           show.obs = FALSE,
           p.style = "scientific",
           p.threshold = c(0.05), # star after all p-values < 0.05
-          p.adjust = NULL, # "fdr"
+          p.adjust = "fdr", # NULL
           df.method = "satterthwaite",
           digits = 6, 
           digits.p = 3)
@@ -3069,33 +2879,26 @@ tab_model(m_RT_ts1_No_centering_age_random_slope,
 
 
 # get LMM results with p-values
-summary_output <- Anova(m_RT_ts1_No_centering_age_random_slope, 
-                        test.statistic = "Chisq") # use Wald approximation to compute p-values
+#summary_output <- Anova(m_RT_ts2_age_centered_random_slope_entropy, 
+#                        test.statistic = "Chisq") # use Wald approximation to compute p-values
 # get p-values
-p_values <- summary_output$`Pr(>Chisq)`
-print(round(p_values, digits = 10))
+#p_values <- summary_output$`Pr(>Chisq)`
+#print(round(p_values, digits = 10))
 # run FDR correction
-p_values_fdr <- round(p.adjust(p_values, method = "fdr"), digits = 10)
+#p_values_fdr <- round(p.adjust(p_values, method = "fdr"), digits = 10)
 # update p-values in the table
-summary_output$`Pr(>Chisq)` <- p_values_fdr
-print(summary_output)
-print(summary(m_RT_ts1_No_centering_age_random_slope))
+#summary_output$`Pr(>Chisq)` <- p_values_fdr
+#print(summary_output)
+#print(summary(m_RT_ts2_age_centered_random_slope_entropy))
 
 # Print model fits:
-message("model fit for LMM of TS1:")
-get_gof(m_RT_ts1_No_centering_age_random_slope)
-message("model fit for LMM of TS4:")
-get_gof(m_RT_ts4_No_centering_age_random_slope)
-message("model fit for LMM of TS12:")
-get_gof(m_RT_ts12_No_centering_age_random_slope)
-message("model fit for LMM of TS60:")
-get_gof(m_RT_ts60_No_centering_age_random_slope)
+message("model fit for LMM:")
+get_gof(m_RT_ts2_age_centered_random_slope_entropy)
 
 
 ```    
 
 
-# Old but maybe usable?
 ## Plot marginal effects (main effects, 2-way interactions & 3-way interactions)
 ```{r plot effects, echo = TRUE}
 # plot random effects:
@@ -3110,265 +2913,132 @@ sjPlot::plot_model(m_compr_Qs)
 
 #### PLOT 3-WAY INTERACTION OF AGE, SURPRISAL AND LOAD (FOR ALL TIME SCALES)################
 
+# ages are: 27, 45, 62
+marginal_effects_3way_interaction <- plot(predict_response(m_RT_ts2_age_centered_random_slope_entropy,  
+                                    terms = c("surprisal_2_centered",  
+                                              "cognitive_load",  
+                                              "age_centered")),  
+                                    line_size = 2,   
+                                    colors = palet_load) +  
+                                    theme_sjplot2() +  
+                                    theme(axis.line.x = element_line(color = "black")) +  
+                                    scale_x_continuous(breaks = c(0 - mean(lmm_df$surprisal_2),  
+                                                                    20 - mean(lmm_df$surprisal_2),  
+                                                                    40 - mean(lmm_df$surprisal_2),  
+                                                                    60 - mean(lmm_df$surprisal_2),  
+                                                                    80 - mean(lmm_df$surprisal_2)),  
+                                                        labels = c(0, 20, 40, 60, 80)) +  
+                                    scale_y_continuous(breaks = c(400, 600, 800, 1000, 1200, 1400, 1600)) +
+                                    theme_minimal() +  
+                                    theme(panel.grid.minor = element_blank(),  
+                                          panel.grid.major = element_blank(),  
+                                          axis.ticks = element_line(color = "black"),  
+                                          axis.line = element_line(color = "black"))  
 
-# For TS1
-marginal_effects_ts1 <- plot_model(m_RT_ts1_No_centering_age_random_slope, 
-                                    type = "pred", 
-                                    terms = c("surprisal_1_centered",
-                                              "cognitive_load",
-                                              "age"),
-                                    line.size = 2,
-                                    title = "Marginal Effects - TS 1",
-                                    colors = palet_load) + 
-                         theme_sjplot2() + 
-                         theme(axis.line.x = element_line(color = "black"))
-
-#save_plot(file = here::here(paste0("Plots/marginal_effects_ts1_", today, ".png")), 
-#          fig = marginal_effects_ts1,
-#          width = 4, height = 6)
-
-
-# For TS4
-marginal_effects_ts4 <- plot_model(m_RT_ts4_No_centering_age_random_slope, 
-                                    type = "pred", 
-                                    terms = c("surprisal_4_centered",
-                                              "cognitive_load",
-                                              "age"),
-                                    line.size = 2,
-                                    title = "Marginal Effects - TS 4",
-                                    colors = palet_load) + 
-                         theme_sjplot2() + 
-                         theme(legend.position = "right")
-
-#save_plot(file = here::here(paste0("Plots/marginal_effects_ts4_", today, ".png")), 
-#          fig = marginal_effects_ts4,
-#          width = 4, height = 6)
-
-# For TS12
-marginal_effects_ts60 <- plot_model(m_RT_ts12_No_centering_age_random_slope, 
-                                    type = "pred", 
-                                    terms = c("surprisal_12_centered",
-                                              "cognitive_load",
-                                              "age"),
-                                    line.size = 2,
-                                    title = "Marginal Effects - TS 12",
-                                    colors = palet_load) + 
-                         theme_sjplot2() + 
-                         theme(legend.position = "right")
-
-#save_plot(file = here::here(paste0("Plots/marginal_effects_ts12_", today, ".png")), 
-#          fig = marginal_effects_ts12,
-#          width = 4, height = 6)
-
-# For TS60
-marginal_effects_ts60 <- plot_model(m_RT_ts60_No_centering_age_random_slope, 
-                                    type = "pred", 
-                                    terms = c("surprisal_60_centered",
-                                              "cognitive_load",
-                                              "age"),
-                                    line.size = 2,
-                                    title = "Marginal Effects - TS 60",
-                                    colors = palet_load) + 
-                         theme_sjplot2() + 
-                         theme(legend.position = "right")
-
-#save_plot(file = here::here(paste0("Plots/marginal_effects_ts60_", today, ".png")), 
-#          fig = marginal_effects_ts60,
-#          width = 4, height = 6)
+ggsave(plot = marginal_effects_3way_interaction, 
+       filename = here::here(paste0("Plots/marginal_effects_3way_interaction_", today, ".pdf")),  
+       width = 7, height = 5, device = "pdf")
 
 
-#####PLOT 2-WAY INTERACTION OF AGE & COGNITIVE LOAD ###############
+#####PLOT 2-WAY INTERACTION OF COGNITIVE LOAD & SURPRISAL ###############
+mean_age <- mean(as.numeric(subset(df_demogr, excl == F)$age))
+sd_age   <- sd(as.numeric(subset(df_demogr, excl == F)$age))
+mean_surprisal <- mean(lmm_df$surprisal_2)
 
-# TS 1:
-# Calculate estimated marginal means for the interaction effects:
-int_eff_cognload_age <- effect("age:cognitive_load", m_RT_ts1_No_centering_age_random_slope)
-# plot them:
-plot_int_age_cognload_ts1 <- plot(int_eff_cognload_age, 
-                              confint = list(style="auto"), # add CIs for each line
-                              main = "Age x Cognitive Load - TS 1",
-                              xlab = "Age (centered)",
-                              ylab = "log reading time",
-                              ylim = c(5.5, 8),
-                              type = "response", 
-                              lines = list(multiline = TRUE,
-                                           lwd = 7, # line width
-                                           col = palet_load),
-                              rug = FALSE)
+# How old are M-1SD, M, M+1SD?
+mean_age+sd_age
+mean_age
+mean_age-sd_age
 
-# TS 4:
-# Calculate estimated marginal means for the interaction effects:
-int_eff_cognload_age <- effect("age:cognitive_load", m_RT_ts4_No_centering_age_random_slope)
-# plot them:
-plot_int_age_cognload_ts4 <- plot(int_eff_cognload_age, 
-                              confint = list(style="auto"), # add CIs for each line
-                              main = "Age x Cognitive Load - TS 4",
-                              xlab = "Age (centered)",
-                              ylab = "log reading time",
-                              ylim = c(5.5, 8),
-                              type = "response", 
-                              lines = list(multiline = TRUE,
-                                           lwd = 7, # line width
-                                           col = palet_load),
-                              rug = FALSE)
-
-# TS 12:
-# Calculate estimated marginal means for the interaction effects:
-int_eff_cognload_age <- effect("age:cognitive_load", m_RT_ts12_No_centering_age_random_slope)
-# plot them:
-plot_int_age_cognload_ts12 <- plot(int_eff_cognload_age, 
-                              confint = list(style="auto"), # add CIs for each line
-                              main = "Age x Cognitive Load - TS 12",
-                              xlab = "Age (centered)",
-                              ylab = "log reading time",
-                              ylim = c(5.5, 8),
-                              type = "response", 
-                              lines = list(multiline = TRUE,
-                                           lwd = 7, # line width
-                                           col = palet_load),
-                              rug = FALSE)
-
-# TS 60:
-# Calculate estimated marginal means for the interaction effects:
-int_eff_cognload_age <- effect("age:cognitive_load", m_RT_ts60_No_centering_age_random_slope)
-# plot them:
-plot_int_age_cognload_ts60 <- plot(int_eff_cognload_age, 
-                              confint = list(style="auto"), # add CIs for each line
-                              main = "Age x Cognitive Load - TS 60",
-                              xlab = "Age (centered)",
-                              ylab = "log reading time",
-                              ylim = c(5.5, 8),
-                              type = "response", 
-                              lines = list(multiline = TRUE,
-                                           lwd = 7, # line width
-                                           col = palet_load),
-                              rug = FALSE)
-
-
-
-#####PLOT 2-WAY INTERACTION OF COGNITIVE LOAD & SURPRISAL (ALL TIME SCALES) ###############
-
-# cognitive load x TS 1:
-plot_int_TS1 <- plot_model(m_RT_ts1_No_centering_age_random_slope,
-                                     type = c("eff"), # plot effect
-                                     terms = c("surprisal_1_centered", "cognitive_load"), 
-                                     title = "TS1",
-                                     show.legend = FALSE,
-                                     line.size = 2,
-                                     ci.lvl = 0.95, # plot 95% CI as shaded area around mean
+plot_int_surprisal_load <- plot(predict_response(m_RT_ts2_age_centered_random_slope_entropy,
+                                                 terms = c("surprisal_2_centered", "cognitive_load")), 
+                                     line_size = 2,
                                      alpha = 0.4, 
-                                     colors = palet_load) + 
+                                     colors = palet_load) +
                             labs(x = "Surprisal", y = "Reading Time in ms") +
                             theme_minimal() + 
                             theme(panel.grid.minor = element_blank(), 
                                   panel.grid.major = element_blank(),
                                   axis.ticks = element_line(color = "black"),
                                   axis.line = element_line(color = "black")) + 
-                            # hack y-axis into log-format:
-                            coord_cartesian(ylim = c(log(400), log(1400))) +
-                            scale_y_continuous(breaks = c(log(400), log(600), 
-                                                          log(800), log(1000), 
-                                                          log(1200), log(1400)), 
-                                               labels = c("400", "600", "800", 
-                                                          "1000", "1200", "1400"))
+                            coord_cartesian(ylim = c(200, 2000)) +
+                            scale_y_continuous(breaks = c(200, 400, 600, 
+                                                          800, 1000, 
+                                                          1200, 1400, 1600, 1800, 2000)) +
+                            scale_x_continuous(breaks = c(0 - mean_surprisal, 
+                                                          20 - mean_surprisal, 
+                                                          40 - mean_surprisal,
+                                                          60 - mean_surprisal,
+                                                          80 - mean_surprisal), 
+                                               labels = c(0, 20, 40, 60, 80))
+
+ggsave(plot = plot_int_surprisal_load, 
+       filename = here::here(paste0("Plots/marginal_effects_surprisal_load_", today, ".pdf")),  
+       width = 7, height = 5, device = "pdf")
 
 
-# cognitive load x TS 4:
-plot_int_TS4 <- plot_model(m_RT_ts4_No_centering_age_random_slope,
-                                     type = c("eff"), # plot effect
-                                     terms = c("surprisal_4_centered", "cognitive_load"), 
-                                     title = "TS4",
-                                     show.legend = FALSE,
-                                     line.size = 2,
-                                     ci.lvl = 0.95, # plot 95% CI as shaded area around mean
+plot_int_age_load <- plot(predict_response(m_RT_ts2_age_centered_random_slope_entropy,
+                                                 terms = c("age_centered", "cognitive_load")), 
+                                     line_size = 2,
                                      alpha = 0.4, 
-                                     colors = palet_load) + 
-                            labs(x = "Surprisal", y = NULL) +
+                                     colors = palet_load) +
+                            labs(x = "Age", y = "Reading Time in ms") +
                             theme_minimal() + 
                             theme(panel.grid.minor = element_blank(), 
                                   panel.grid.major = element_blank(),
                                   axis.ticks = element_line(color = "black"),
                                   axis.line = element_line(color = "black")) + 
-                            # hack y-axis into log-format:
-                            coord_cartesian(ylim = c(log(400), log(1400))) +
-                            scale_y_continuous(breaks = c(log(400), log(600), 
-                                                          log(800), log(1000), 
-                                                          log(1200), log(1400)), 
-                                               labels = NULL)
+                            coord_cartesian(ylim = c(200, 2000)) +
+                            scale_y_continuous(breaks = c(200, 400, 600, 
+                                                          800, 1000, 
+                                                          1200, 1400, 1600, 1800, 2000))+
+                              scale_x_continuous(breaks = c(20 - mean_age, 
+                                                            40 - mean_age,
+                                                            60 - mean_age,
+                                                            80 - mean_age), 
+                                                             labels = c(20, 40, 60, 80))
 
-# TS 12:
-plot_int_TS12 <- plot_model(m_RT_ts12_No_centering_age_random_slope,
-                                     type = c("eff"), # plot effect
-                                     terms = c("surprisal_12_centered", "cognitive_load"), 
-                                     title = "TS12",
-                                     show.legend = FALSE,
-                                     line.size = 2,
-                                     ci.lvl = 0.95, # plot 95% CI as shaded area around mean
+ggsave(plot = plot_int_age_load, 
+       filename = here::here(paste0("Plots/marginal_effects_age_load_", today, ".pdf")),  
+       width = 7, height = 5, device = "pdf")
+
+
+plot_int_age_surprisal <- plot(predict_response(m_RT_ts2_age_centered_random_slope_entropy,
+                                                 terms = c("surprisal_2_centered", "age_centered")), 
+                                     line_size = 2,
                                      alpha = 0.4, 
-                                     colors = palet_load) + 
-                            labs(x = "Surprisal", y = NULL) +
+                                     colors = c("#69a3c2", "#4c768c","#365464")) + 
+                            labs(x = "Surprisal", y = "Reading Time in ms") +
                             theme_minimal() + 
                             theme(panel.grid.minor = element_blank(), 
                                   panel.grid.major = element_blank(),
                                   axis.ticks = element_line(color = "black"),
                                   axis.line = element_line(color = "black")) + 
-                            # hack y-axis into log-format:
-                            coord_cartesian(ylim = c(log(400), log(1400))) +
-                            scale_y_continuous(breaks = c(log(400), log(600), 
-                                                          log(800), log(1000), 
-                                                          log(1200), log(1400)), 
-                                               labels = NULL)
-
-# TS 60:
-plot_int_TS60 <- plot_model(m_RT_ts60_No_centering_age_random_slope,
-                                     type = c("eff"), # plot effect
-                                     terms = c("surprisal_60_centered", "cognitive_load"), 
-                                     title = "TS60",
-                                     show.legend = FALSE,
-                                     ci.lvl = 0.95, # plot 95% CI as shaded area around mean
-                                     line.size = 2,
-                                     alpha = 0.4, 
-                                     colors = palet_load) + 
-                            labs(x = "Surprisal", y = NULL) +
-                            theme_minimal() + 
-                            theme(panel.grid.minor = element_blank(), 
-                                  panel.grid.major = element_blank(),
-                                  axis.ticks = element_line(color = "black"),
-                                  axis.line = element_line(color = "black")) + 
-                            # hack y-axis into log-format:
-                            coord_cartesian(ylim = c(log(400), log(1400))) +
-                            scale_y_continuous(breaks = c(log(400), log(600), 
-                                                          log(800), log(1000), 
-                                                          log(1200), log(1400)), 
-                                               labels = NULL)
-
-  
-  
-# Combine the 4 plots so each is 1 column (this takes some time to run):
-marginal_effects_ts_load <- grid.arrange(plot_int_TS1, 
-                                         plot_int_TS4, 
-                                         plot_int_TS12, 
-                                         plot_int_TS60,
-                                         widths = c(1.2, 1, 1, 1),
-                                         nrow = 1)
-ggsave(plot = marginal_effects_ts_load, 
-       filename = here::here(paste0("Plots/marginal_effects_ts_load_", today, ".pdf")),         
-       width = 10, height = 5, device = "pdf")
-
+                            coord_cartesian(ylim = c(200, 2000)) +
+                            scale_y_continuous(breaks = c(200, 400, 600, 
+                                                          800, 1000, 
+                                                          1200, 1400, 1600, 1800, 2000)) +
+                                scale_x_continuous(breaks = c(0 - mean_surprisal,
+                                                              20 - mean_surprisal, 
+                                                              40 - mean_surprisal,
+                                                              60 - mean_surprisal,
+                                                              80 - mean_surprisal), 
+                                                             labels = c(0, 20, 40, 60, 80))
+ggsave(plot = plot_int_age_surprisal, 
+       filename = here::here(paste0("Plots/marginal_effects_age_surprisal_", today, ".pdf")),  
+       width = 7, height = 5, device = "pdf")
+                                          
+                                          
 
 ##### PLOT MAIN EFFECTS ###############
 
 # Age, Surprisal and Load 
-# (all on TS1 because there are no huge differences between Timescales anyway)
 
 # Reading gets a lot slower with increasing age:
-plot_age_TS1 <- plot_model(m_RT_ts1_No_centering_age_random_slope,
-                                     type = c("eff"), # plot effect
-                                     terms = c("age"), 
-                                     title = "Age (TS1)",
-                                     show.legend = FALSE,
+plot_age <- plot(predict_response(m_RT_ts2_age_centered_random_slope_entropy,
+                                     terms = c("age_centered")), 
                                      line.size = 2,
                                      alpha = 0.4, 
-                                     ci.lvl=0.95, # plot 95% CI as shaded area around mean
                                      colors = palet_effects) + 
                             labs(x = "Age", y = "Reading Time (in ms)") +
                             theme_minimal() + 
@@ -3378,252 +3048,148 @@ plot_age_TS1 <- plot_model(m_RT_ts1_No_centering_age_random_slope,
                                   axis.line = element_line(color = "black")) + 
                             scale_x_continuous(breaks = c(20, 40, 60, 80), 
                                                labels = c(20, 40, 60, 80)) +
-                            coord_cartesian(ylim = c(log(400), log(1400))) +
-                            # hack y-axis into log-format:
-                            scale_y_continuous(breaks = c(log(400), log(600), 
-                                                          log(800), log(1000), 
-                                                          log(1200), log(1400)), 
-                                               labels = c(400, 600, 800, 1000, 1200, 1400))
+                            coord_cartesian(ylim = c(200, 1400)) +
+                            scale_y_continuous(breaks = c(200, 400, 600, 
+                                                          800, 1000, 
+                                                          1200, 1400)) +
+                            scale_x_continuous(breaks = c(20 - mean_age, 
+                                                          40 - mean_age,
+                                                          60 - mean_age,
+                                                          80 - mean_age), 
+                                               labels = c(20, 40, 60, 80))
+
+# Calculate how much reading slows down with a 1 year increase in age:
+exp(0.009113264) # put beta for age effect here: Gives you the change in % for a change of 1 year in age
+
+# Now check our mean RT, divide by 100 and multiply by exp(0.009113264) to get change in RT
+mean(lmm_df$duration)/100 * exp(0.009113264) 
+
+
 
 
 # Reading gets a lot slower with increasing load:
-plot_load_TS1 <- plot_model(m_RT_ts1_No_centering_age_random_slope,
-                                     type = c("eff"), # plot effect
-                                     terms = c("cognitive_load"), 
-                                     title = "Cognitive Load (TS1)",
-                                     show.legend = FALSE,
+plot_load <- plot(predict_response(m_RT_ts2_age_centered_random_slope_entropy,
+                                     terms = c("cognitive_load")), 
                                      line.size = 2,
                                      alpha = 0.4, 
-                                     ci.lvl=0.95, # plot 95% CI as whiskers
-                                     colors = palet_load) + # only shows first colour?!
-                            labs(x = "Cognitive Load", y = NULL) +
+                                     colors = palet_load) + 
+                            labs(x = "Cognitive Load", y = "Reading Time (in ms)") +
                             theme_minimal() + 
                             theme(panel.grid.minor = element_blank(), 
                                   panel.grid.major = element_blank(),
                                   axis.ticks = element_line(color = "black"),
                                   axis.line = element_line(color = "black")) + 
-                            coord_cartesian(ylim = c(log(400), log(1400))) +
-                            # hack y-axis into log-format:
-                            scale_y_continuous(breaks = c(log(400), log(600), 
-                                                          log(800), log(1000), 
-                                                          log(1200), log(1400)), 
-                                               labels = NULL)
+                            coord_cartesian(ylim = c(200, 1400)) +
+                            scale_y_continuous(breaks = c(200, 400, 600, 
+                                                          800, 1000, 
+                                                          1200, 1400))
 
 # Reading gets slower with increasing surprisal:
-plot_surprisal_TS1 <- plot_model(m_RT_ts1_No_centering_age_random_slope,
-                                     type = c("eff"), # plot effect
-                                     terms = c("surprisal_1_centered"), 
-                                     title = "Surprisal (TS1)",
-                                     show.legend = FALSE,
-                                     ci.lvl=0.95, # plot 95% CI as shaded area around mean
+plot_surprisal <- plot(predict_response(m_RT_ts2_age_centered_random_slope_entropy,
+                                     terms = c("surprisal_2_centered")), 
                                      line.size = 2,
                                      alpha = 0.4, 
-                                     colors = palet_effects) + # only shows first colour?!
-                            labs(x = "Surprisal (centered)", y = NULL) +
+                                     colors = palet_effects) + 
+                            labs(x = "Surprisal", y = "Reading Time (in ms)") +
                             theme_minimal() + 
                             theme(panel.grid.minor = element_blank(), 
                                   panel.grid.major = element_blank(),
                                   axis.ticks = element_line(color = "black"),
                                   axis.line = element_line(color = "black")) + 
-                            coord_cartesian(ylim = c(log(400), log(1400))) +
-                            # hack y-axis into log-format:
-                            scale_y_continuous(breaks = c(log(400), log(600), 
-                                                          log(800), log(1000), 
-                                                          log(1200), log(1400)), 
-                                               labels = NULL)
+                            coord_cartesian(ylim = c(200, 1400)) +
+                            scale_y_continuous(breaks = c(200, 400, 600, 
+                                                          800, 1000, 
+                                                          1200, 1400)) +
+                            scale_x_continuous(breaks = c(0 - mean_surprisal,
+                                                          20 - mean_surprisal, 
+                                                          40 - mean_surprisal,
+                                                          60 - mean_surprisal,
+                                                          80 - mean_surprisal), 
+                                               labels = c(0, 20, 40, 60, 80))
 
 
 # Combine the 3 plots so each is 1 column:
-marginal_effects_age_surprisal_load <- grid.arrange(plot_age_TS1, 
-                                         plot_load_TS1, 
-                                         plot_surprisal_TS1,
+marginal_effects_age_surprisal_load <- grid.arrange(plot_age, 
+                                         plot_load, 
+                                         plot_surprisal,
                                          widths = c(1.2, 1, 1),
                                          nrow = 1)
 ggsave(plot = marginal_effects_age_surprisal_load, 
-       filename = here::here(paste0("Plots/marginal_effects_age_surprisal_load_", today, ".pdf")),         
+       filename = here::here(paste0("Plots/marginal_effects_age_surprisal_load_", today, ".pdf")),  
        width = 10, height = 5, device = "pdf")
 
 
 
-# also get main effects for surprisal on different TSs
-# --> use the models with scrambled time scales here:
-main_eff_TS1 <- effect("surprisal_1_centered", m_RT_ts1_No_centering_age_random_slope)
-main_eff_TS4 <- effect("surprisal_4_centered", m_RT_ts4_No_centering_age_random_slope)
-main_eff_TS12 <- effect("surprisal_12_centered", m_RT_ts12_No_centering_age_random_slope)
-main_eff_TS60 <- effect("surprisal_60_centered", m_RT_ts60_No_centering_age_random_slope)
 
 
+## OLD: 
 
+#main_eff <- effect("surprisal_2_centered", m_RT_ts2_No_centering_age_random_slope_entropy)
 
-  
-
-# Effects we just controlled for:
-
-# estimate marginal means:
-# --> use the model of TS 1 with all uncentered age variable here:
-main_eff_dprime_TS1 <- effect("dprime_centered", m_RT_ts1_No_centering_age_random_slope)
-main_eff_comprQs_mean_TS1 <- effect("compr_Qs_percent_correct_mean_centered", m_RT_ts1_No_centering_age_random_slope)
-main_eff_comprQs_diff_TS1 <- effect("compr_Qs_percent_correct_diff_centered", m_RT_ts1_No_centering_age_random_slope)
-main_eff_reaction_TS1 <- effect("reaction", m_RT_ts1_No_centering_age_random_slope)
-main_eff_cognload_TS1 <- effect("cognitive_load", m_RT_ts1_No_centering_age_random_slope)
-main_eff_block_nr_TS1 <- effect("block_nr", m_RT_ts1_No_centering_age_random_slope)
-main_eff_trial_nr_TS1 <- effect("trial_nr", m_RT_ts1_No_centering_age_random_slope)
-main_eff_word_length_TS1 <- effect("word_length_single_centered", m_RT_ts1_No_centering_age_random_slope)
-main_eff_word_freq_TS1 <- effect("word_frequency_centered", m_RT_ts1_No_centering_age_random_slope)
+# Estimate marginal means for some effects we controlled for:
+# --> use the model with uncentered age variable here:
+#main_eff_dprime <- effect("dprime_centered", m_RT_ts2_No_centering_age_random_slope_entropy)
+#main_eff_comprQs_mean <- effect("compr_Qs_percent_correct_mean_centered", #m_RT_ts2_No_centering_age_random_slope_entropy)
+#main_eff_comprQs_diff <- effect("compr_Qs_percent_correct_diff_centered", #m_RT_ts2_No_centering_age_random_slope_entropy)
+#main_eff_cognload <- effect("cognitive_load", m_RT_ts2_No_centering_age_random_slope_entropy)
 
 
 # On block-level, reading gets a lot slower with increasing d-prime.
-plot_main_eff_dprime <- plot(x = main_eff_dprime_TS1,
-                              confint = list(style = "auto"), # add CIs
-                              main = "Main Effect 'd-Prime Mean'",
-                              xlab = "d-prime",
-                              ylab = "log reading times",
-                              ylim = c(6, 7.1),
-                              type = "response",
-                              rug = FALSE,
-                              lines = list(col = "#365464", lwd = 7))
+#plot_main_eff_dprime <- plot(x = main_eff_dprime,
+#                              confint = list(style = "auto"), # add CIs
+#                              main = "Main Effect 'd-Prime Mean'",
+#                              xlab = "d-prime",
+#                              ylab = "log reading times",
+#                              ylim = c(6, 7.1),
+#                              type = "response",
+#                              rug = FALSE,
+#                              lines = list(col = "#365464", lwd = 7))
 
 # same with performance in the comprehension Qs (on participant level): 
 # People who take longer are better in the comprehension Qs. Maybe those are the people who read more carefully in general.
-plot_main_eff_comprQs_mean <- plot(x = main_eff_comprQs_mean_TS1,
-                              confint = list(style = "auto"), # add CIs
-                              main = "Main Effect '% Correct in Comprehension Qs Mean'",
-                              xlab = "% correct",
-                              ylab = "log reading times",
-                              ylim = c(6, 7.1),
-                              type = "response",
-                              rug = FALSE,
-                              lines = list(col = "#365464", lwd = 7))
+#plot_main_eff_comprQs_mean <- plot(x = main_eff_comprQs_mean,
+#                              confint = list(style = "auto"), # add CIs
+#                              main = "Main Effect '% Correct in Comprehension Qs Mean'",
+#                              xlab = "% correct",
+#                              ylab = "log reading times",
+#                              ylim = c(6, 7.1),
+#                              type = "response",
+#                              rug = FALSE,
+#                              lines = list(col = "#365464", lwd = 7))
 
 # --> completely different story on block level: High reading speed seems to be linked to high comprehension Q performance. 
 # Maybe facilitated comprehension makes people faster.
-plot_main_eff_comprQs_diff <- plot(x = main_eff_comprQs_diff_TS1,
-                              confint = list(style = "auto"), # add CIs
-                              main = "Main Effect '% Correct in Comprehension Qs Diff'",
-                              xlab = "% correct",
-                              ylab = "log reading times",
-                              ylim = c(6, 7.1),
-                              type = "response",
-                              rug = FALSE,
-                              lines = list(col = "#365464", lwd = 7))
-
-
-# "Reading" gets a lot slower when there's an n-back reaction:
-plot_main_eff_reaction <- plot(x = main_eff_reaction_TS1,
-                           confint = list(style = "auto"), # add CIs
-                           main = "Main Effect 'Reaction'",
-                           xlab = "Reaction",
-                           ylab = "log reading times",
-                           ylim = c(6, 7.1),
-                           type = "response",
-                           rug = FALSE,
-                           lines = list(col = "#365464", lwd = 7))
+#plot_main_eff_comprQs_diff <- plot(x = main_eff_comprQs_diff,
+#                              confint = list(style = "auto"), # add CIs
+#                              main = "Main Effect '% Correct in Comprehension Qs Diff'",
+#                              xlab = "% correct",
+#                              ylab = "log reading times",
+#                              ylim = c(6, 7.1),
+#                              type = "response",
+#                              rug = FALSE,
+#                              lines = list(col = "#365464", lwd = 7))
 
 # Reading gets a lot slower with increasing cognitive load:
-plot_main_eff_cognload <- plot(x = main_eff_cognload_TS1,
-                               confint = list(style = "auto"), # add CIs
-                               main = "Main Effect 'Cognitive Load'",
-                               xlab = "Cognitive Load Condition",
-                               ylab = "log reading times",
-                               ylim = c(6, 7.1),
-                               type = "response",
-                               rug = FALSE,
-                               lines = list(col = "#365464", lwd = 7))
- 
-# Reading gets a little faster towards the end of the experiment:
-plot_main_eff_block_nr <- plot(x = main_eff_block_nr_TS1,
-                                 confint = list(style = "auto"), # add CIs
-                                 main = "Main Effect 'Block Nr'",
-                                 xlab = "Number of Block",
-                                 ylab = "log reading times",
-                                 ylim = c(6, 7.1),
-                                 type = "response",
-                                 rug = FALSE,
-                                 lines = list(col = "#365464", lwd = 7))
-
-# Reading gets a little faster towards the end of the block:
-plot_main_eff_trial_nr <- plot(x = main_eff_trial_nr_TS1,
-                               confint = list(style = "auto"), # add CIs
-                               main = "Main Effect 'Trial Nr'",
-                               xlab = "Position of Word in the Block",
-                               ylab = "log reading times",
-                               ylim = c(6, 7.1),
-                               type = "response",
-                               rug = FALSE,
-                               lines = list(col = "#365464", lwd = 7))
-
-# I can't really see an effect of word frequency on reading speed 
-# (it's not significant in the model, so this makes sense)
-plot_main_eff_word_freq <- plot(x = main_eff_word_freq_TS1,
-                               confint = list(style = "auto"), # add CIs
-                               main = "Main Effect 'Word Frequency'",
-                               xlab = "Word Frequency",
-                               ylab = "log reading times",
-                               ylim = c(6, 7.1),
-                               type = "response",
-                               rug = FALSE,
-                               lines = list(col = "#365464", lwd = 7))
-
-# Reading gets a little slower with increasing word length:
-plot_main_eff_word_length <- plot(x = main_eff_word_length_TS1,
-                                confint = list(style = "auto"), # add CIs
-                                main = "Main Effect 'Word Length'",
-                                xlab = "Word Length",
-                                ylab = "log reading times",
-                                ylim = c(6, 7.1),
-                                type = "response",
-                                rug = FALSE,
-                                lines = list(col = "#365464", lwd = 7))
-
-
-# Plot main effects for Surprisal on all TSs:
+#plot_main_eff_cognload <- plot(x = main_eff_cognload,
+#                               confint = list(style = "auto"), # add CIs
+#                               main = "Main Effect 'Cognitive Load'",
+#                               xlab = "Cognitive Load Condition",
+#                               ylab = "log reading times",
+#                               ylim = c(6, 7.1),
+#                               type = "response",
+#                               rug = FALSE,
+#                               lines = list(col = "#365464", lwd = 7))
 
 # Reading gets a little slower with increasing word surprisal:
-plot_main_eff_TS1 <- plot(x = main_eff_TS1,
-                                  confint = list(style = "auto"), # add CIs
-                                  main = "Main Effect 'Surprisal TS1'",
-                                  xlab = "Surprisal",
-                                  ylab = "log reading times",
-                                  ylim = c(6, 7.1),
-                                  type = "response",
-                                  rug = FALSE,
-                                  lines = list(col = "#365464", lwd = 7))
-
-# Reading gets a little slower with increasing word length:
-plot_main_eff_TS4 <- plot(x = main_eff_TS4,
-                                  confint = list(style = "auto"), # add CIs
-                                  main = "Main Effect 'Surprisal TS4'",
-                                  xlab = "Surprisal",
-                                  ylab = "log reading times",
-                                  ylim = c(6, 7.1),
-                                  type = "response",
-                                  rug = FALSE,
-                                  lines = list(col = "#365464", lwd = 7))
-
-# Reading gets a little slower with increasing word length:
-plot_main_eff_TS12 <- plot(x = main_eff_TS12,
-                                  confint = list(style = "auto"), # add CIs
-                                  main = "Main Effect 'Surprisal TS12'",
-                                  xlab = "Surprisal",
-                                  ylab = "log reading times",
-                                  ylim = c(6, 7.1),
-                                  type = "response",
-                                  rug = FALSE,
-                                  lines = list(col = "#365464", lwd = 7))
-
-# Reading gets a little slower with increasing word length:
-plot_main_eff_TS60 <- plot(x = main_eff_TS60,
-                                  confint = list(style = "auto"), # add CIs
-                                  main = "Main Effect 'Surprisal TS60'",
-                                  xlab = "Surprisal",
-                                  ylab = "log reading times",
-                                  ylim = c(6, 7.1),
-                                  type = "response",
-                                  rug = FALSE,
-                                  lines = list(col = "#365464", lwd = 7))
-
-
-
+#plot_main_eff_surprisal <- plot(x = main_eff,
+#                      confint = list(style = "auto"), # add CIs
+#                      main = "Main Effect 'Surprisal'",
+#                      xlab = "Surprisal",
+#                      ylab = "log reading times",
+#                      ylim = c(6, 7.1),
+#                      type = "response",
+#                      rug = FALSE,
+#                      lines = list(col = "#365464", lwd = 7))
 
 ```
 
@@ -3631,73 +3197,37 @@ plot_main_eff_TS60 <- plot(x = main_eff_TS60,
 ````{r plot simple slopes}
 
 # Load simple slopes results:
-#load(here::here("Analysis/RData/simslopes_ts1.RData")) 
-#load(here::here("Analysis/RData/simslopes_ts4.RData")) 
-#load(here::here("Analysis/RData/simslopes_ts12.RData")) 
-#load(here::here("Analysis/RData/simslopes_ts60.RData")) 
+#load(here::here("Analysis/RData/simslopes_ts2.RData")) 
 
 ## load individual plots into variables & change line & fill colour
 
-# TS1
-baseline_ts1 <- ss_RT_ts1_noCentering_full_random_structure$jn[[1]]$plot +
+baseline <- ss_RT_ts2_noCentering_full_random_structure$jn[[1]]$plot +
                 scale_color_manual(values = palet_simple_slopes) +
                 scale_fill_manual(values = palet_simple_slopes)
-one_back_ts1 <- ss_RT_ts1_noCentering_full_random_structure$jn[[2]]$plot +
-                scale_color_manual(values = palet_simple_slopes) +
-                scale_fill_manual(values = palet_simple_slopes)
-two_back_ts1 <- ss_RT_ts1_noCentering_full_random_structure$jn[[3]]$plot +
-                scale_color_manual(values = palet_simple_slopes) +
-                scale_fill_manual(values = palet_simple_slopes)
-# TS4
-baseline_ts4 <- ss_RT_ts4_noCentering_full_random_structure$jn[[1]]$plot +
-                scale_color_manual(values = palet_simple_slopes) +
-                scale_fill_manual(values = palet_simple_slopes)
-one_back_ts4 <- ss_RT_ts4_noCentering_full_random_structure$jn[[2]]$plot+
-                scale_color_manual(values = palet_simple_slopes) +
-                scale_fill_manual(values = palet_simple_slopes)
-two_back_ts4 <- ss_RT_ts4_noCentering_full_random_structure$jn[[3]]$plot +
-                scale_color_manual(values = palet_simple_slopes) +
-                scale_fill_manual(values = palet_simple_slopes)
-# TS12
-baseline_ts12 <- ss_RT_ts12_noCentering_full_random_structure$jn[[1]]$plot+
-                 scale_color_manual(values = palet_simple_slopes) +
-                 scale_fill_manual(values = palet_simple_slopes)
-one_back_ts12 <- ss_RT_ts12_noCentering_full_random_structure$jn[[2]]$plot+
-                 scale_color_manual(values = palet_simple_slopes) +
-                 scale_fill_manual(values = palet_simple_slopes)
-two_back_ts12 <- ss_RT_ts12_noCentering_full_random_structure$jn[[3]]$plot+
-                 scale_color_manual(values = palet_simple_slopes) +
-                 scale_fill_manual(values = palet_simple_slopes)
-# TS60
-baseline_ts60 <- ss_RT_ts60_noCentering_full_random_structure$jn[[1]]$plot +
-                 scale_color_manual(values = palet_simple_slopes) +
-                 scale_fill_manual(values = palet_simple_slopes)
-one_back_ts60 <- ss_RT_ts60_noCentering_full_random_structure$jn[[2]]$plot +
-                 scale_color_manual(values = palet_simple_slopes) +
-                 scale_fill_manual(values = palet_simple_slopes)
-two_back_ts60 <- ss_RT_ts60_noCentering_full_random_structure$jn[[3]]$plot +
-                 scale_color_manual(values = palet_simple_slopes) +
-                 scale_fill_manual(values = palet_simple_slopes)
-
-
+one_back <- ss_RT_ts2_noCentering_full_random_structure$jn[[2]]$plot +
+                scale_color_manual(values = palet_simple_slopes[2]) +
+                scale_fill_manual(values = palet_simple_slopes[2])
+two_back <- ss_RT_ts2_noCentering_full_random_structure$jn[[3]]$plot +
+                scale_color_manual(values = palet_simple_slopes[2]) +
+                scale_fill_manual(values = palet_simple_slopes[2])
 
 
 ## for each time scale, merge all plots together into one column
-simslopes_ts1 <- ggarrange(baseline_ts1 + coord_cartesian(ylim = c(-0.0015, 0.0042)) +
+simslopes <- ggarrange(baseline + coord_cartesian(ylim = c(-0.001, 0.0075)) +
                            theme(legend.position = "none",
                                  axis.title.x = element_blank(),
                                  axis.ticks.x = element_blank(),
                                  axis.text.x = element_blank(),
                                  axis.title.y = element_blank()) +
-                           labs(title = "TS 1"),
-                           one_back_ts1 + coord_cartesian(ylim = c(-0.0015, 0.0042)) +
+                           labs(title = "EXNAT-1: Full Sample"),
+                           one_back + coord_cartesian(ylim = c(-0.001, 0.0075)) +
                            theme(legend.position = "none",
                                  axis.title.x = element_blank(),
                                  axis.ticks.x = element_blank(),
                                  axis.text.x = element_blank(),
                                  axis.title.y = element_blank()) +
                            labs(title = NULL),
-                           two_back_ts1 + coord_cartesian(ylim = c(-0.0015, 0.0042)) +
+                           two_back + coord_cartesian(ylim = c(-0.001, 0.0075)) +
                            theme(legend.position = "none",
                                  axis.title.x = element_blank(),
                                  axis.title.y = element_blank()) +
@@ -3705,101 +3235,8 @@ simslopes_ts1 <- ggarrange(baseline_ts1 + coord_cartesian(ylim = c(-0.0015, 0.00
                            labs(title = NULL), 
                            ncol = 1)
 
-simslopes_ts4 <- ggarrange(baseline_ts4 + coord_cartesian(ylim = c(-0.0015, 0.0042)) +
-    
-                           theme(legend.position = "none",
-                                 axis.title.x = element_blank(),
-                                 axis.ticks.x = element_blank(),
-                                 axis.text.x = element_blank(),
-                                 axis.text.y = element_blank(),
-                                 axis.ticks.y = element_blank(),
-                                 axis.title.y = element_blank()) +
-                           labs(title = "TS 4"),
-                           one_back_ts4 + coord_cartesian(ylim = c(-0.0015, 0.0042)) +
-                           theme(legend.position = "none",
-                                 axis.title.x = element_blank(),
-                                 axis.ticks.x = element_blank(),
-                                 axis.text.x = element_blank(),
-                                 axis.text.y = element_blank(),
-                                 axis.ticks.y = element_blank(),
-                                 axis.title.y = element_blank()) +
-                           labs(title = NULL),
-                           two_back_ts4 + coord_cartesian(ylim = c(-0.0015, 0.0042)) +
-                           theme(legend.position = "none",
-                                 axis.title.x = element_blank(),
-                                 axis.text.y = element_blank(),
-                                 axis.ticks.y = element_blank(),
-                                 axis.title.y = element_blank()) +
-                           scale_x_continuous(breaks = c(20, 40, 60, 80)) +
-                           labs(title = NULL), 
-                           ncol = 1)
-
-simslopes_ts12 <- ggarrange(baseline_ts12 + coord_cartesian(ylim = c(-0.0015, 0.0042)) +
-                            theme(legend.position = "none",
-                                  axis.title.x = element_blank(),
-                                  axis.ticks.x = element_blank(),
-                                  axis.text.x = element_blank(),
-                                  axis.text.y = element_blank(),
-                                  axis.ticks.y = element_blank(),
-                                  axis.title.y = element_blank()) +
-                           labs(title = "TS 12"),
-                           one_back_ts12 + coord_cartesian(ylim = c(-0.0015, 0.0042)) +
-                           theme(legend.position = "none",
-                                 axis.title.x = element_blank(),
-                                 axis.ticks.x = element_blank(),
-                                 axis.text.x = element_blank(),
-                                 axis.text.y = element_blank(),
-                                 axis.ticks.y = element_blank(),
-                                 axis.title.y = element_blank()) +
-                           labs(title = NULL),
-                           two_back_ts12 + coord_cartesian(ylim = c(-0.0015, 0.0042)) +
-                           theme(legend.position = "none",
-                                 axis.title.x = element_blank(),
-                                 axis.text.y = element_blank(),
-                                 axis.ticks.y = element_blank(),
-                                 axis.title.y = element_blank()) +
-                           scale_x_continuous(breaks = c(20, 40, 60, 80)) +
-                           labs(title = NULL), 
-                           ncol = 1)
-
-simslopes_ts60 <- ggarrange(baseline_ts60 + coord_cartesian(ylim = c(-0.0015, 0.0042)) +    
-                            theme(legend.position = "none",
-                            axis.title.x = element_blank(),
-                            axis.ticks.x = element_blank(),
-                            axis.text.y = element_blank(),
-                            axis.ticks.y = element_blank(),
-                            axis.text.x = element_blank(),
-                            axis.title.y = element_blank()) +
-                            labs(title = "TS 60"),
-                            one_back_ts60 + coord_cartesian(ylim = c(-0.0015, 0.0042)) +
-                            theme(legend.position = "none",
-                                  axis.title.x = element_blank(),
-                                  axis.ticks.x = element_blank(),
-                                  axis.text.y = element_blank(),
-                                  axis.ticks.y = element_blank(),
-                                  axis.text.x = element_blank(),
-                                  axis.title.y = element_blank()) +
-                            labs(title = NULL),
-                            two_back_ts60 + coord_cartesian(ylim = c(-0.0015, 0.0042)) +
-                            theme(legend.position = "none",
-                                  axis.title.x = element_blank(),
-                                  axis.text.y = element_blank(),
-                                  axis.ticks.y = element_blank(),
-                                  axis.title.y = element_blank()) +
-                            scale_x_continuous(breaks = c(20, 40, 60, 80)) +
-                            labs(title = NULL), 
-                            ncol = 1)
-
-
-# Combine the plots so each is 1 column:
-simple_slopes_all_ts <- grid.arrange(simslopes_ts1, 
-                                     simslopes_ts4, 
-                                     simslopes_ts12, 
-                                     simslopes_ts60,
-                                     widths = c(1.3, 1, 1, 1),
-                                     nrow = 1)
-ggsave(plot = simple_slopes_all_ts, 
-       filename = here::here(paste0("Plots/simple_slopes_all_ts_", today, ".pdf")),         
-       width = 10, height = 5, device = "pdf")
+ggsave(plot = simslopes, 
+       filename = here::here(paste0("Plots/simple_slopes_", today, ".pdf")),
+       width = 3, height = 5, device = "pdf")
 
 ````
