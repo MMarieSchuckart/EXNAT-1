@@ -39,6 +39,7 @@ pkgs <- c("here", # for working with relative paths
           "devtools", # for getting packages from github
           "lattice", # for quick & dirty density plots
           "gtools", # for getting tuples from list
+          "Hmisc", # for plotting CI in spaghetti plots of RTs
           #"DescTools", # for checking normality of distribution in QQ plot
           "easystats", # also for working with lme4 model output, contains "performance" & "see" I think?
           "see", # for plotting residuals of lme4 model
@@ -1456,7 +1457,7 @@ plot_df$Condition <- factor(plot_df$Condition, levels = c("BL", "1back", "2back"
 
 # plot RTs across recording locations:
 rt_age_log <- ggplot(plot_df, aes(x = Age, y = Reaction_time, color = Condition))+
-              geom_point2(alpha = 0.5, size = 1.8) +
+              geom_point2(alpha = 0.5, size = 1.3) +
               geom_smooth(method = lm, aes(fill = Condition), na.rm = T) +
               scale_color_manual(values = palet_load) +
               scale_fill_manual(values = palet_load) +
@@ -1473,6 +1474,29 @@ rt_age_log <- ggplot(plot_df, aes(x = Age, y = Reaction_time, color = Condition)
 
 ggsave(rt_age_log, file = here::here(paste0("Plots/RT_age_cond_log_all_", today, ".pdf")), 
        width = 8, height = 5)  
+
+
+
+
+# Also plot RTs by condition as spaghetti plot:
+spaghetti_plot_RTs_cond <- ggplot(plot_df, aes(x = Condition, y = Reaction_time, group = Subject)) +
+  geom_line(alpha = 0.3, color = "grey") +  # Individual participant lines with transparency
+  geom_point(alpha = 0.5, size = 1.5, aes(color = Condition)) +  # Points at each condition
+  stat_summary(aes(group = 1), fun.data = mean_cl_boot, geom = "ribbon", 
+               alpha = 0.8, fill = "white", color = "grey") + # CI ribbon around the mean line
+  stat_summary(aes(group = 1), fun = mean, geom = "line", color = "black", size = 1.2) +  # Mean line across participants
+  stat_summary(aes(group = 1), fun = mean, geom = "point", color = "black", size = 2.5) + # Mean points at each condition
+  scale_color_manual(values = palet_load, guide = "none") + # Hide individual participant legend
+                # make y-axis log-transformed (with log base e as in log() function)
+              scale_y_log(breaks=c(0, 250, 500, 1000, 2000, 4000), 
+                          labels=c("0","250", "500", "1000", "2000", "4000")) +
+  labs(x = "Condition", y = "Reading Time (in ms)", title = "RTs by Condition") +
+  apatheme + # Apply custom theme
+  theme(legend.position = "none") # Remove legend
+
+ggsave(spaghetti_plot_RTs_cond, file = here::here(paste0("Plots/RT_cond_all_spaghetti.pdf")), 
+       width = 8, height = 4.5)  
+
 
 # plot divided by recording location:
 rt_age_log_location <- ggplot(plot_df,  
@@ -1734,6 +1758,15 @@ plot_RT_by_task <- ggplot(plot_df, aes(x = Age,
 plot_RT_by_task
 ggsave(plot_RT_by_task, file = here::here(paste0("Plots/RT_by_task_", today, ".pdf")), 
        device = "pdf", width = 4, height = 4)
+
+
+
+
+
+
+
+
+
 
 
 ```
@@ -2164,6 +2197,7 @@ tab_model(m_RT_ts2_age_centered_replication_sample,
           digits = 6, 
           digits.p = 3)
 
+length(as.numeric(subset(df_demogr, excl == F)$age))
 
 # TO DO: Add plots with estimates & CI as in Malte's paper.
 # Explanation for future Merle: We don't compare the results directly with the results from the Full OG LMM because the model comprised the recording_location term there, so it's not 100% comparable. 
@@ -3117,6 +3151,122 @@ marginal_effects_age_surprisal_load <- grid.arrange(plot_age,
 ggsave(plot = marginal_effects_age_surprisal_load, 
        filename = here::here(paste0("Plots/marginal_effects_age_surprisal_load_", today, ".pdf")),  
        width = 10, height = 5, device = "pdf")
+
+
+
+
+
+
+
+##### PLOT PREDICTED DATA FOR MAIN EFFECTS ###############
+
+# Plot predicted data points for main effect of age
+plot_age_id <- plot(predict_response(m_RT_ts2_age_centered_random_slope_entropy, 
+                                     terms = c("age_centered")), 
+                    collapse_group = "ID", 
+                    colors = palet_effects, 
+                    line.size = 1,
+                    dot_size = 1, 
+                    dot_alpha = 0.2) +
+                    labs(x = "Age", y = "Reading Time (in ms)") +
+                    theme_minimal() + 
+                    theme(panel.grid.minor = element_blank(), 
+                          panel.grid.major = element_blank(),
+                          axis.ticks = element_line(color = "black"),
+                          axis.line = element_line(color = "black")) + 
+                    coord_cartesian(ylim = c(0, 4000)) +
+                    scale_y_continuous(breaks = c(0, 1000, 2000, 3000, 4000)) +
+                    scale_x_continuous(breaks = c(0 - mean_age,
+                                                  20 - mean_age, 
+                                                  40 - mean_age,
+                                                  60 - mean_age,
+                                                  80 - mean_age), 
+                                       labels = c(0, 20, 40, 60, 80))
+
+ggsave(plot = plot_age_id, 
+       filename = here::here(paste0("Plots/marginal_effects_age_by_ID_", today, ".pdf")),  
+       width = 6, height = 5, device = "pdf")
+
+# Cognitive Load
+pred <- predict_response(m_RT_ts2_age_centered_random_slope_entropy, 
+                      terms = c("cognitive_load"))
+
+plot_load_id <- plot(predict_response(m_RT_ts2_age_centered_random_slope_entropy, 
+                      terms = c("cognitive_load")), 
+                     collapse_group = "ID", 
+                     dot_size = 1, 
+                     line_size = 1,
+                     dot_alpha = 0.2, 
+                     color = palet_load,
+                     jitter = 0.85) +
+                labs(x = "Cognitive Load", y = "Reading Time (in ms)") +
+                theme_minimal() + 
+                scale_color_manual(values = palet_load, guide = "none") +
+                theme(panel.grid.minor = element_blank(), 
+                      panel.grid.major = element_blank(),
+                      axis.ticks = element_line(color = "black"),
+                      axis.line = element_line(color = "black")) + 
+                      coord_cartesian(ylim = c(0, 4000)) +
+                      scale_y_continuous(breaks = c(0, 1000, 2000, 3000, 4000)) 
+
+ggsave(plot = plot_load_id, 
+       filename = here::here(paste0("Plots/marginal_effects_load_by_ID_", today, ".pdf")),  
+       width = 5, height = 5, device = "pdf")
+
+# Surprisal
+plot(predict_response(m_RT_ts2_age_centered_random_slope_entropy, 
+                      terms = c("surprisal_2_centered")), 
+     collapse_group = "ID", 
+     dot_size = 1, 
+     line.size = 1,
+     dot_alpha = 0.01, 
+     jitter = 0.85, 
+     color = palet_effects, 
+     facets = T) +
+#                      labs(x = "Age", y = "Reading Time (in ms)") +
+#                    theme_minimal() + 
+#                    theme(panel.grid.minor = element_blank(), 
+#                          panel.grid.major = element_blank(),
+#                          axis.ticks = element_line(color = "black"),
+#                          axis.line = element_line(color = "black")) + 
+#                    coord_cartesian(ylim = c(0, 4000)) +
+#                    scale_y_continuous(breaks = c(0, 1000, 2000, 3000, 4000)) +
+#                    scale_x_continuous(breaks = c(0 - mean_surprisal,
+#                                                  20 - mean_surprisal, 
+#                                                  40 - mean_surprisal,
+#                                                  60 - mean_surprisal,
+#                                                  80 - mean_surprisal), 
+#                                       labels = c(0, 20, 40, 60, 80))
+
+
+# Surprisal and Cognitive Load
+plot(predict_response(m_RT_ts2_No_centering_age_random_slope_entropy, terms = c("surprisal_2_centered", "cognitive_load")), collapse_group = "ID", dot_size = 0.6, dot_alpha= 0.01, alpha = 0.3, colors = palet_load)
+
+
+summary(surprisal_df$surprisal_2_words_context)
+
+
+
+
+
+# Also plot RTs by condition as spaghetti plot:
+#spaghetti_plot_RTs_cond <- ggplot(plot_df, aes(x = Condition, y = Reaction_time, group = Subject)) +
+#  geom_line(alpha = 0.3, color = "grey") +  # Individual participant lines with transparency
+#  geom_point(alpha = 0.5, size = 1.5, aes(color = Condition)) +  # Points at each condition
+#  stat_summary(aes(group = 1), fun.data = mean_cl_boot, geom = "ribbon", 
+#               alpha = 0.8, fill = "white", color = "grey") + # CI ribbon around the mean line
+#  stat_summary(aes(group = 1), fun = mean, geom = "line", color = "black", size = 1.2) +  # Mean line across participants
+#  stat_summary(aes(group = 1), fun = mean, geom = "point", color = "black", size = 2.5) + # Mean points at each condition
+#  scale_color_manual(values = palet_load, guide = "none") + # Hide individual participant legend
+#                # make y-axis log-transformed (with log base e as in log() function)
+#              scale_y_log(breaks=c(0, 250, 500, 1000, 2000, 4000), 
+#                          labels=c("0","250", "500", "1000", "2000", "4000")) +
+#  labs(x = "Condition", y = "Reading Time (in ms)", title = "RTs by Condition") +
+#  apatheme + # Apply custom theme
+#  theme(legend.position = "none") # Remove legend
+
+#ggsave(spaghetti_plot_RTs_cond, file = here::here(paste0("Plots/RT_cond_all_spaghetti.pdf")), 
+#       width = 8, height = 4.5) 
 
 
 
