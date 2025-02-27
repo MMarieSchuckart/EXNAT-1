@@ -3,7 +3,7 @@
 
 Here you can find all experimental and analysis scripts for our paper "Executive Resources Shape the Effects of Language Predictability Across the Adult Lifespan" (working title: "EXNAT-1").
 <br><br>
-Authors: Merle Schuckart<sup>1,2</sup>, Sandra Martin<sup>3</sup>, Sarah Tune<sup>1,2</sup>, Lea-Maria Schmitt<sup>4</sup>, Gesa Hartwigsen<sup>3,5</sup> & Jonas Obleser<sup>1,2</sup> 
+Authors: Merle Schuckart<sup>1,2</sup> & Sandra Martin<sup>3</sup>, Sarah Tune<sup>1,2</sup>, Lea-Maria Schmitt<sup>4</sup>, Gesa Hartwigsen<sup>3,5</sup> & Jonas Obleser<sup>1,2</sup> 
 <br><br>
 <sup> 
 1 Department of Psychology, University of Lübeck, Germany<br>
